@@ -116,7 +116,6 @@ begin
   where numero_pedido like '#PED-' || year || '-%';
   
   order_num := '#PED-' || year || '-' || lpad(next_num::text, 4, '0');
-  
   return order_num;
 end;
 $$;
