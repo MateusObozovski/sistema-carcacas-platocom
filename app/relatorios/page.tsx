@@ -1,0 +1,434 @@
+"use client"
+
+import { Button } from "@/components/ui/button"
+
+import { CardContent } from "@/components/ui/card"
+
+import { CardDescription } from "@/components/ui/card"
+
+import { CardTitle } from "@/components/ui/card"
+
+import { CardHeader } from "@/components/ui/card"
+
+import { Card } from "@/components/ui/card"
+
+import { useState, useEffect } from "react"
+import { ProtectedRoute } from "@/components/protected-route"
+import { useAuth } from "@/lib/auth-context"
+import { mockPedidos, mockClientes, mockVendedores } from "@/lib/mock-data"
+import { Download, FileText, TrendingUp, Calendar } from "lucide-react"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Label } from "@/components/ui/label"
+import { useToast } from "@/hooks/use-toast"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { StatusBadge } from "@/components/status-badge"
+
+export default function RelatoriosPage() {
+  const { user } = useAuth()
+  const { toast } = useToast()
+  const [pedidos, setPedidos] = useState(mockPedidos)
+  const [periodoFiltro, setPeriodoFiltro] = useState<"7dias" | "30dias" | "90dias" | "todos">("30dias")
+  const [vendedorFiltro, setVendedorFiltro] = useState<string>("todos")
+
+  useEffect(() => {
+    const pedidosLocal = JSON.parse(localStorage.getItem("pedidos") || "[]")
+    const todosPedidos = [...mockPedidos, ...pedidosLocal]
+    setPedidos(todosPedidos)
+  }, [])
+
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+    }).format(value)
+  }
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString("pt-BR")
+  }
+
+  const getDaysPending = (dataCriacao: string) => {
+    const created = new Date(dataCriacao)
+    const now = new Date()
+    const diff = now.getTime() - created.getTime()
+    return Math.floor(diff / (1000 * 60 * 60 * 24))
+  }
+
+  const filtrarPorPeriodo = (dataCriacao: string) => {
+    const dias = getDaysPending(dataCriacao)
+    switch (periodoFiltro) {
+      case "7dias":
+        return dias <= 7
+      case "30dias":
+        return dias <= 30
+      case "90dias":
+        return dias <= 90
+      case "todos":
+        return true
+      default:
+        return true
+    }
+  }
+
+  const pedidosFiltrados = pedidos.filter((p) => {
+    if (user?.role === "vendedor" && p.vendedorId !== user.id) return false
+    if (vendedorFiltro !== "todos" && p.vendedorId !== vendedorFiltro) return false
+    return filtrarPorPeriodo(p.dataCriacao)
+  })
+
+  const carcacasPendentes = pedidosFiltrados.filter(
+    (p) => p.tipoVenda === "base-troca" && (p.statusCarcaca === "aguardando" || p.statusCarcaca === "atrasado"),
+  )
+
+  const totalVendas = pedidosFiltrados.length
+  const vendasBaseTroca = pedidosFiltrados.filter((p) => p.tipoVenda === "base-troca").length
+  const vendasNormais = pedidosFiltrados.filter((p) => p.tipoVenda === "normal").length
+  const valorTotalVendas = pedidosFiltrados.reduce((acc, p) => acc + p.precoFinal, 0)
+  const debitoTotal = carcacasPendentes.reduce((acc, p) => acc + p.debitoCarcaca, 0)
+  const pedidosAtrasados = carcacasPendentes.filter((p) => p.statusCarcaca === "atrasado").length
+
+  const vendedoresComDados = mockVendedores.map((vendedor) => {
+    const pedidosVendedor = pedidosFiltrados.filter((p) => p.vendedorId === vendedor.id)
+    const carcacasVendedor = carcacasPendentes.filter((p) => p.vendedorId === vendedor.id)
+    const debitoVendedor = carcacasVendedor.reduce((acc, p) => acc + p.debitoCarcaca, 0)
+
+    return {
+      ...vendedor,
+      totalVendas: pedidosVendedor.length,
+      valorVendas: pedidosVendedor.reduce((acc, p) => acc + p.precoFinal, 0),
+      carcacasPendentesAtual: carcacasVendedor.length,
+      debitoAtual: debitoVendedor,
+    }
+  })
+
+  const clientesComDados = mockClientes.map((cliente) => {
+    const pedidosCliente = pedidosFiltrados.filter((p) => p.clienteId === cliente.id)
+    const carcacasCliente = carcacasPendentes.filter((p) => p.clienteId === cliente.id)
+    const debitoCliente = carcacasCliente.reduce((acc, p) => acc + p.debitoCarcaca, 0)
+
+    return {
+      ...cliente,
+      totalVendas: pedidosCliente.length,
+      valorVendas: pedidosCliente.reduce((acc, p) => acc + p.precoFinal, 0),
+      carcacasPendentesAtual: carcacasCliente.length,
+      debitoAtual: debitoCliente,
+    }
+  })
+
+  const handleExportarRelatorio = (tipo: string) => {
+    toast({
+      title: "Relatório exportado!",
+      description: `O relatório de ${tipo} foi exportado com sucesso.`,
+    })
+  }
+
+  return (
+    <ProtectedRoute allowedRoles={["Patrão", "Gerente", "Coordenador"]}>
+      <div className="p-6">
+        <div className="space-y-6">
+          <div>
+            <h2 className="text-3xl font-bold tracking-tight">Relatórios</h2>
+            <p className="text-muted-foreground">Análises e exportações de dados do sistema</p>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Filtros de Período</CardTitle>
+              <CardDescription>Selecione o período e vendedor para análise</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Período</Label>
+                  <Select value={periodoFiltro} onValueChange={(v) => setPeriodoFiltro(v as any)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="7dias">Últimos 7 dias</SelectItem>
+                      <SelectItem value="30dias">Últimos 30 dias</SelectItem>
+                      <SelectItem value="90dias">Últimos 90 dias</SelectItem>
+                      <SelectItem value="todos">Todos os períodos</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Vendedor</Label>
+                  <Select value={vendedorFiltro} onValueChange={setVendedorFiltro}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="todos">Todos os vendedores</SelectItem>
+                      {mockVendedores.map((vendedor) => (
+                        <SelectItem key={vendedor.id} value={vendedor.id}>
+                          {vendedor.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Total de Vendas</CardTitle>
+                <TrendingUp className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{totalVendas}</div>
+                <p className="text-xs text-muted-foreground">
+                  {vendasBaseTroca} base troca / {vendasNormais} normais
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Valor Total</CardTitle>
+                <TrendingUp className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{formatCurrency(valorTotalVendas)}</div>
+                <p className="text-xs text-muted-foreground">Receita do período</p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Débito Pendente</CardTitle>
+                <Calendar className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{formatCurrency(debitoTotal)}</div>
+                <p className="text-xs text-muted-foreground">{carcacasPendentes.length} carcaças</p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Atrasados</CardTitle>
+                <Calendar className="h-4 w-4 text-red-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-red-500">{pedidosAtrasados}</div>
+                <p className="text-xs text-muted-foreground">Mais de 30 dias</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          <Tabs defaultValue="vendedores" className="space-y-4">
+            <TabsList>
+              <TabsTrigger value="vendedores">Por Vendedor</TabsTrigger>
+              <TabsTrigger value="clientes">Por Cliente</TabsTrigger>
+              <TabsTrigger value="carcacas">Carcaças Pendentes</TabsTrigger>
+              <TabsTrigger value="exportar">Exportar</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="vendedores" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Desempenho por Vendedor</CardTitle>
+                  <CardDescription>Análise de vendas e débitos por vendedor</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Vendedor</TableHead>
+                        <TableHead className="text-right">Vendas</TableHead>
+                        <TableHead className="text-right">Valor Total</TableHead>
+                        <TableHead className="text-right">Carcaças</TableHead>
+                        <TableHead className="text-right">Débito</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {vendedoresComDados
+                        .filter((v) => vendedorFiltro === "todos" || v.id === vendedorFiltro)
+                        .sort((a, b) => b.valorVendas - a.valorVendas)
+                        .map((vendedor) => (
+                          <TableRow key={vendedor.id}>
+                            <TableCell className="font-medium">{vendedor.name}</TableCell>
+                            <TableCell className="text-right">{vendedor.totalVendas}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(vendedor.valorVendas)}</TableCell>
+                            <TableCell className="text-right">{vendedor.carcacasPendentesAtual}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(vendedor.debitoAtual)}</TableCell>
+                          </TableRow>
+                        ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="clientes" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Análise por Cliente</CardTitle>
+                  <CardDescription>Histórico de compras e débitos por cliente</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Cliente</TableHead>
+                        <TableHead>Vendedor</TableHead>
+                        <TableHead className="text-right">Compras</TableHead>
+                        <TableHead className="text-right">Valor Total</TableHead>
+                        <TableHead className="text-right">Carcaças</TableHead>
+                        <TableHead className="text-right">Débito</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {clientesComDados
+                        .filter((c) => c.totalVendas > 0)
+                        .sort((a, b) => b.valorVendas - a.valorVendas)
+                        .map((cliente) => {
+                          const vendedor = mockVendedores.find((v) => v.id === cliente.vendedorId)
+                          return (
+                            <TableRow key={cliente.id}>
+                              <TableCell className="font-medium">{cliente.name}</TableCell>
+                              <TableCell>{vendedor?.name}</TableCell>
+                              <TableCell className="text-right">{cliente.totalVendas}</TableCell>
+                              <TableCell className="text-right">{formatCurrency(cliente.valorVendas)}</TableCell>
+                              <TableCell className="text-right">{cliente.carcacasPendentesAtual}</TableCell>
+                              <TableCell className="text-right">{formatCurrency(cliente.debitoAtual)}</TableCell>
+                            </TableRow>
+                          )
+                        })}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="carcacas" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Relatório de Carcaças Pendentes</CardTitle>
+                  <CardDescription>Todas as carcaças aguardando devolução no período</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Pedido</TableHead>
+                        <TableHead>Cliente</TableHead>
+                        <TableHead>Vendedor</TableHead>
+                        <TableHead>Produto</TableHead>
+                        <TableHead className="text-right">Débito</TableHead>
+                        <TableHead className="text-center">Dias</TableHead>
+                        <TableHead>Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {carcacasPendentes.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={7} className="text-center text-muted-foreground">
+                            Nenhuma carcaça pendente no período
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        carcacasPendentes
+                          .sort((a, b) => getDaysPending(b.dataCriacao) - getDaysPending(a.dataCriacao))
+                          .map((pedido) => {
+                            const cliente = mockClientes.find((c) => c.id === pedido.clienteId)
+                            const vendedor = mockVendedores.find((v) => v.id === pedido.vendedorId)
+                            return (
+                              <TableRow key={pedido.id}>
+                                <TableCell className="font-mono text-sm">{pedido.numero}</TableCell>
+                                <TableCell>{cliente?.name}</TableCell>
+                                <TableCell>{vendedor?.name}</TableCell>
+                                <TableCell>{pedido.produto}</TableCell>
+                                <TableCell className="text-right">{formatCurrency(pedido.debitoCarcaca)}</TableCell>
+                                <TableCell className="text-center">{getDaysPending(pedido.dataCriacao)}</TableCell>
+                                <TableCell>
+                                  <StatusBadge status={pedido.statusCarcaca} />
+                                </TableCell>
+                              </TableRow>
+                            )
+                          })
+                      )}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="exportar" className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-2">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <FileText className="h-5 w-5" />
+                      Relatório de Vendas
+                    </CardTitle>
+                    <CardDescription>Exportar relatório completo de vendas do período</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Button onClick={() => handleExportarRelatorio("vendas")} className="w-full">
+                      <Download className="mr-2 h-4 w-4" />
+                      Exportar Vendas
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <FileText className="h-5 w-5" />
+                      Relatório de Carcaças
+                    </CardTitle>
+                    <CardDescription>Exportar relatório de carcaças pendentes</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Button onClick={() => handleExportarRelatorio("carcaças")} className="w-full">
+                      <Download className="mr-2 h-4 w-4" />
+                      Exportar Carcaças
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <FileText className="h-5 w-5" />
+                      Relatório por Vendedor
+                    </CardTitle>
+                    <CardDescription>Exportar desempenho de vendedores</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Button onClick={() => handleExportarRelatorio("vendedores")} className="w-full">
+                      <Download className="mr-2 h-4 w-4" />
+                      Exportar Vendedores
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <FileText className="h-5 w-5" />
+                      Relatório por Cliente
+                    </CardTitle>
+                    <CardDescription>Exportar histórico de clientes</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Button onClick={() => handleExportarRelatorio("clientes")} className="w-full">
+                      <Download className="mr-2 h-4 w-4" />
+                      Exportar Clientes
+                    </Button>
+                  </CardContent>
+                </Card>
+              </div>
+            </TabsContent>
+          </Tabs>
+        </div>
+      </div>
+    </ProtectedRoute>
+  )
+}
