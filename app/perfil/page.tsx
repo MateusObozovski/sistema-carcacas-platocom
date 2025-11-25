@@ -6,27 +6,57 @@ import { DashboardHeader } from "@/components/dashboard-header"
 import { DashboardNav } from "@/components/dashboard-nav"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { useAuth } from "@/lib/auth-context"
-import { mockVendedores, mockClientes, mockPedidos } from "@/lib/mock-data"
+import { getVendedorStats, getClients, getOrders } from "@/lib/supabase/database"
 import { StatCard } from "@/components/stat-card"
 import { DollarSign, Package, Users, ShoppingCart } from "lucide-react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { StatusBadge } from "@/components/status-badge"
 import Link from "next/link"
 
+// Helper function to map database status to StatusBadge status
+function mapStatusToBadge(status: string): "aguardando" | "atrasado" | "devolvida" | "perda-total" {
+  if (status === "Aguardando Devolução") return "aguardando"
+  if (status === "Atrasado") return "atrasado"
+  if (status === "Concluído") return "devolvida"
+  if (status === "Perda Total") return "perda-total"
+  return "aguardando"
+}
+
 export default function PerfilPage() {
   const { user } = useAuth()
-  const [pedidos, setPedidos] = useState(mockPedidos)
+  const [vendedorStats, setVendedorStats] = useState({ debitoTotal: 0, carcacasPendentes: 0 })
+  const [meusClientes, setMeusClientes] = useState<any[]>([])
+  const [meusPedidos, setMeusPedidos] = useState<any[]>([])
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    const pedidosLocal = JSON.parse(localStorage.getItem("pedidos") || "[]")
-    const todosPedidos = [...mockPedidos, ...pedidosLocal]
-    setPedidos(todosPedidos)
-  }, [])
+    const loadData = async () => {
+      if (!user?.id) return
 
-  const vendedor = mockVendedores.find((v) => v.id === user?.id)
-  const meusClientes = mockClientes.filter((c) => c.vendedorId === user?.id)
-  const meusPedidos = pedidos.filter((p) => p.vendedorId === user?.id)
-  const pedidosPendentes = meusPedidos.filter((p) => p.statusCarcaca === "aguardando" || p.statusCarcaca === "atrasado")
+      try {
+        setIsLoading(true)
+        const [stats, clientes, pedidos] = await Promise.all([
+          getVendedorStats(user.id),
+          getClients(user.id),
+          getOrders(user.id),
+        ])
+
+        setVendedorStats(stats)
+        setMeusClientes(clientes)
+        setMeusPedidos(pedidos)
+      } catch (error) {
+        console.error("[v0] Error loading perfil data:", error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadData()
+  }, [user?.id])
+
+  const pedidosPendentes = meusPedidos.filter(
+    (p) => p.status === "Aguardando Devolução" || p.status === "Atrasado",
+  )
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat("pt-BR", {
@@ -46,8 +76,24 @@ export default function PerfilPage() {
     return Math.floor(diff / (1000 * 60 * 60 * 24))
   }
 
+  if (isLoading) {
+    return (
+      <ProtectedRoute allowedRoles={["Vendedor"]}>
+        <div className="flex min-h-screen flex-col">
+          <DashboardHeader />
+          <div className="flex flex-1">
+            <DashboardNav />
+            <main className="flex-1 p-6">
+              <div className="text-center text-muted-foreground">Carregando...</div>
+            </main>
+          </div>
+        </div>
+      </ProtectedRoute>
+    )
+  }
+
   return (
-    <ProtectedRoute allowedRoles={["vendedor"]}>
+    <ProtectedRoute allowedRoles={["Vendedor"]}>
       <div className="flex min-h-screen flex-col">
         <DashboardHeader />
         <div className="flex flex-1">
@@ -82,13 +128,13 @@ export default function PerfilPage() {
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                 <StatCard
                   title="Meu Débito Total"
-                  value={formatCurrency(vendedor?.debitoTotal || 0)}
+                  value={formatCurrency(vendedorStats.debitoTotal)}
                   icon={DollarSign}
                   description="Total de débitos pendentes"
                 />
                 <StatCard
                   title="Carcaças Pendentes"
-                  value={vendedor?.carcacasPendentes || 0}
+                  value={vendedorStats.carcacasPendentes}
                   icon={Package}
                   description="Aguardando devolução"
                 />
@@ -132,20 +178,21 @@ export default function PerfilPage() {
                         </TableRow>
                       ) : (
                         pedidosPendentes.slice(0, 10).map((pedido) => {
-                          const cliente = mockClientes.find((c) => c.id === pedido.clienteId)
+                          const cliente = meusClientes.find((c) => c.id === pedido.cliente_id)
+                          const primeiroItem = pedido.order_items?.[0]
                           return (
                             <TableRow key={pedido.id}>
                               <TableCell className="font-mono text-sm">
-                                <Link href={`/pedidos/${pedido.numero}`} className="hover:underline">
-                                  {pedido.numero}
+                                <Link href={`/pedidos/${pedido.numero_pedido}`} className="hover:underline">
+                                  {pedido.numero_pedido}
                                 </Link>
                               </TableCell>
-                              <TableCell>{cliente?.name}</TableCell>
-                              <TableCell>{pedido.produto}</TableCell>
-                              <TableCell className="text-right">{formatCurrency(pedido.debitoCarcaca)}</TableCell>
-                              <TableCell className="text-center">{getDaysPending(pedido.dataCriacao)}</TableCell>
+                              <TableCell>{cliente?.nome}</TableCell>
+                              <TableCell>{primeiroItem?.produto_nome || "-"}</TableCell>
+                              <TableCell className="text-right">{formatCurrency(pedido.debito_carcaca || 0)}</TableCell>
+                              <TableCell className="text-center">{getDaysPending(pedido.data_venda)}</TableCell>
                               <TableCell>
-                                <StatusBadge status={pedido.statusCarcaca} />
+                                <StatusBadge status={mapStatusToBadge(pedido.status)} />
                               </TableCell>
                             </TableRow>
                           )

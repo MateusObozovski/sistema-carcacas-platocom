@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { ProtectedRoute } from "@/components/protected-route"
 import { useAuth } from "@/lib/auth-context"
-import { mockClientes, generatePedidoNumero } from "@/lib/mock-data"
+import { getClients, generateOrderNumber, getProducts, createOrder, type DatabaseProduct } from "@/lib/supabase/database"
 import { useToast } from "@/hooks/use-toast"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -16,7 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import type { OrderItem, Product } from "@/lib/types"
+import type { OrderItem } from "@/lib/types"
 import { 
   ShoppingCart, 
   Plus, 
@@ -39,10 +39,12 @@ export default function NovaVendaPage() {
   const [observacoes, setObservacoes] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const [produtos, setProdutos] = useState<Product[]>([])
+  const [produtos, setProdutos] = useState<DatabaseProduct[]>([])
+  const [clientes, setClientes] = useState<any[]>([])
   const [filterMarca, setFilterMarca] = useState<string>("all")
   const [filterTipo, setFilterTipo] = useState<string>("all")
   const [filterCategoria, setFilterCategoria] = useState<string>("all")
+  const [isLoading, setIsLoading] = useState(true)
 
   const [items, setItems] = useState<OrderItem[]>([])
   const [currentProdutoId, setCurrentProdutoId] = useState("")
@@ -50,27 +52,45 @@ export default function NovaVendaPage() {
   const [currentPreco, setCurrentPreco] = useState(0)
   const [currentDesconto, setCurrentDesconto] = useState(10)
 
-  const loadProducts = () => {
-    const stored = localStorage.getItem("products")
-    if (stored) {
-      const allProducts = JSON.parse(stored)
-      const activeProducts = allProducts.filter((p: Product) => p.ativo)
-      setProdutos(activeProducts)
+  const loadProducts = async () => {
+    try {
+      const productsData = await getProducts()
+      setProdutos(productsData)
       toast({
         title: "Produtos atualizados",
-        description: `${activeProducts.length} produtos disponíveis`,
+        description: `${productsData.length} produtos disponíveis`,
       })
-    } else {
-      setProdutos([])
+    } catch (error) {
+      console.error("[v0] Error loading products:", error)
+      toast({
+        title: "Erro",
+        description: "Não foi possível carregar os produtos",
+        variant: "destructive",
+      })
     }
   }
 
   useEffect(() => {
-    loadProducts()
-  }, [])
+    const loadData = async () => {
+      try {
+        setIsLoading(true)
+        const [productsData, clientsData] = await Promise.all([
+          getProducts(),
+          user?.role === "Vendedor" ? getClients(user.id) : getClients(),
+        ])
+        setProdutos(productsData)
+        setClientes(clientsData)
+      } catch (error) {
+        console.error("[v0] Error loading data:", error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
 
-  const clientesDisponiveis =
-    user?.role === "vendedor" ? mockClientes.filter((c) => c.vendedorId === user.id) : mockClientes
+    loadData()
+  }, [user])
+
+  const clientesDisponiveis = clientes
 
   const marcas = Array.from(new Set(produtos.map((p) => p.marca))).sort()
   const tipos = Array.from(new Set(produtos.map((p) => p.tipo))).sort()
@@ -103,7 +123,7 @@ export default function NovaVendaPage() {
     const produto = produtos.find((p) => p.id === currentProdutoId)
     if (!produto) return
 
-    const precoOriginal = produto.precoBase
+    const precoOriginal = produto.preco_base
     const valorDesconto = tipoVenda === "base-troca" ? (currentPreco * currentDesconto) / 100 : 0
     const precoFinal = currentPreco - valorDesconto
     const subtotal = precoFinal * currentQuantidade
@@ -112,7 +132,7 @@ export default function NovaVendaPage() {
     const newItem: OrderItem = {
       id: `item-${Date.now()}`,
       produtoId: currentProdutoId,
-      produtoNome: produto.name,
+      produtoNome: produto.nome,
       quantidade: currentQuantidade,
       precoUnitario: precoFinal,
       precoOriginal: precoOriginal,
@@ -128,7 +148,7 @@ export default function NovaVendaPage() {
 
     toast({
       title: "Item adicionado",
-      description: `${produto.name} adicionado ao carrinho`,
+      description: `${produto.nome} adicionado ao carrinho`,
     })
   }
 
@@ -140,7 +160,11 @@ export default function NovaVendaPage() {
     setCurrentProdutoId(produtoId)
     const produto = produtos.find((p) => p.id === produtoId)
     if (produto) {
-      setCurrentPreco(produto.precoBase)
+      setCurrentPreco(produto.preco_base)
+      // Set max discount based on product
+      if (tipoVenda === "base-troca") {
+        setCurrentDesconto(Math.min(produto.desconto_maximo_bt, 15))
+      }
     }
   }
 
@@ -162,7 +186,7 @@ export default function NovaVendaPage() {
     e.preventDefault()
     setIsSubmitting(true)
 
-    if (!clienteId || items.length === 0) {
+    if (!clienteId || items.length === 0 || !user?.id) {
       toast({
         title: "Erro",
         description: items.length === 0 ? "Adicione pelo menos um item" : "Selecione um cliente",
@@ -172,38 +196,54 @@ export default function NovaVendaPage() {
       return
     }
 
-    const numeroPedido = generatePedidoNumero()
+    try {
+      const numeroPedido = await generateOrderNumber()
 
-    const novoPedido = {
-      id: `p${Date.now()}`,
-      numero: numeroPedido,
-      clienteId,
-      vendedorId: user?.id || "",
-      produto: items.map((i) => i.produtoNome).join(", "),
-      tipoVenda,
-      precoOriginal: totalOriginal,
-      desconto: tipoVenda === "base-troca" ? currentDesconto : 0,
-      precoFinal: totalFinal,
-      debitoCarcaca: totalDebitoCarcaca,
-      items,
-      statusCarcaca: tipoVenda === "base-troca" ? ("aguardando" as const) : ("devolvida" as const),
-      dataCriacao: new Date().toISOString().split("T")[0],
-      dataPrevisaoDevolucao: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
-      observacoes,
+      // Create order
+      const order = {
+        numero_pedido: numeroPedido,
+        cliente_id: clienteId,
+        vendedor_id: user.id,
+        tipo_venda: tipoVenda === "base-troca" ? "Base de Troca" : "Normal",
+        valor_total: totalFinal,
+        debito_carcaca: totalDebitoCarcaca,
+        status: tipoVenda === "base-troca" ? "Aguardando Devolução" : "Concluído",
+        data_venda: new Date().toISOString(),
+        observacoes: observacoes || undefined,
+      }
+
+      // Create order items
+      const orderItems = items.map((item) => ({
+        produto_id: item.produtoId,
+        produto_nome: item.produtoNome,
+        quantidade: item.quantidade,
+        preco_unitario: item.precoUnitario,
+        desconto_percentual: item.desconto,
+        preco_final: item.precoUnitario,
+        debito_carcaca: item.debitoCarcaca,
+        tipo_venda: tipoVenda === "base-troca" ? "Base de Troca" : "Normal",
+      }))
+
+      await createOrder(order, orderItems)
+
+      toast({
+        title: "Venda registrada!",
+        description: `Pedido ${numeroPedido} criado com sucesso`,
+      })
+
+      setTimeout(() => {
+        router.push(`/pedidos/${numeroPedido}`)
+      }, 1000)
+    } catch (error) {
+      console.error("[v0] Error creating order:", error)
+      toast({
+        title: "Erro",
+        description: "Não foi possível registrar a venda",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSubmitting(false)
     }
-
-    const pedidosExistentes = JSON.parse(localStorage.getItem("pedidos") || "[]")
-    pedidosExistentes.push(novoPedido)
-    localStorage.setItem("pedidos", JSON.stringify(pedidosExistentes))
-
-    toast({
-      title: "Venda registrada!",
-      description: `Pedido ${numeroPedido} criado com sucesso`,
-    })
-
-    setTimeout(() => {
-      router.push(`/pedidos/${numeroPedido}`)
-    }, 1000)
   }
 
   const formatCurrency = (value: number) => {
@@ -250,7 +290,7 @@ export default function NovaVendaPage() {
                       <SelectContent>
                         {clientesDisponiveis.map((cliente) => (
                           <SelectItem key={cliente.id} value={cliente.id}>
-                            {cliente.name}
+                            {cliente.nome}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -379,7 +419,7 @@ export default function NovaVendaPage() {
                           ) : (
                             produtosFiltrados.map((produto) => (
                               <SelectItem key={produto.id} value={produto.id}>
-                                {produto.name} - {formatCurrency(produto.precoBase)}
+                                {produto.nome} - {formatCurrency(produto.preco_base)}
                               </SelectItem>
                             ))
                           )}

@@ -15,7 +15,7 @@ import { Card } from "@/components/ui/card"
 import { useState, useEffect } from "react"
 import { ProtectedRoute } from "@/components/protected-route"
 import { useAuth } from "@/lib/auth-context"
-import { mockPedidos, mockClientes, mockVendedores } from "@/lib/mock-data"
+import { getOrders, getClients, getVendedores } from "@/lib/supabase/database"
 import { Download, FileText, TrendingUp, Calendar } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
@@ -24,17 +24,45 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { StatusBadge } from "@/components/status-badge"
 
+// Helper function to map database status to StatusBadge status
+function mapStatusToBadge(status: string): "aguardando" | "atrasado" | "devolvida" | "perda-total" {
+  if (status === "Aguardando Devolução") return "aguardando"
+  if (status === "Atrasado") return "atrasado"
+  if (status === "Concluído") return "devolvida"
+  if (status === "Perda Total") return "perda-total"
+  return "aguardando"
+}
+
 export default function RelatoriosPage() {
   const { user } = useAuth()
   const { toast } = useToast()
-  const [pedidos, setPedidos] = useState(mockPedidos)
+  const [orders, setOrders] = useState<any[]>([])
+  const [clients, setClients] = useState<any[]>([])
+  const [vendedores, setVendedores] = useState<any[]>([])
+  const [isLoading, setIsLoading] = useState(true)
   const [periodoFiltro, setPeriodoFiltro] = useState<"7dias" | "30dias" | "90dias" | "todos">("30dias")
   const [vendedorFiltro, setVendedorFiltro] = useState<string>("todos")
 
   useEffect(() => {
-    const pedidosLocal = JSON.parse(localStorage.getItem("pedidos") || "[]")
-    const todosPedidos = [...mockPedidos, ...pedidosLocal]
-    setPedidos(todosPedidos)
+    const loadData = async () => {
+      try {
+        setIsLoading(true)
+        const [ordersData, clientsData, vendedoresData] = await Promise.all([
+          getOrders(),
+          getClients(),
+          getVendedores(),
+        ])
+        setOrders(ordersData)
+        setClients(clientsData)
+        setVendedores(vendedoresData)
+      } catch (error) {
+        console.error("[v0] Error loading relatorios data:", error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadData()
   }, [])
 
   const formatCurrency = (value: number) => {
@@ -55,8 +83,8 @@ export default function RelatoriosPage() {
     return Math.floor(diff / (1000 * 60 * 60 * 24))
   }
 
-  const filtrarPorPeriodo = (dataCriacao: string) => {
-    const dias = getDaysPending(dataCriacao)
+  const filtrarPorPeriodo = (dataVenda: string) => {
+    const dias = getDaysPending(dataVenda)
     switch (periodoFiltro) {
       case "7dias":
         return dias <= 7
@@ -71,46 +99,49 @@ export default function RelatoriosPage() {
     }
   }
 
-  const pedidosFiltrados = pedidos.filter((p) => {
-    if (user?.role === "vendedor" && p.vendedorId !== user.id) return false
-    if (vendedorFiltro !== "todos" && p.vendedorId !== vendedorFiltro) return false
-    return filtrarPorPeriodo(p.dataCriacao)
+  const pedidosFiltrados = orders.filter((p) => {
+    if (user?.role === "Vendedor" && p.vendedor_id !== user.id) return false
+    if (vendedorFiltro !== "todos" && p.vendedor_id !== vendedorFiltro) return false
+    return filtrarPorPeriodo(p.data_venda)
   })
 
   const carcacasPendentes = pedidosFiltrados.filter(
-    (p) => p.tipoVenda === "base-troca" && (p.statusCarcaca === "aguardando" || p.statusCarcaca === "atrasado"),
+    (p) =>
+      p.tipo_venda === "Base de Troca" &&
+      (p.status === "Aguardando Devolução" || p.status === "Atrasado") &&
+      (p.debito_carcaca || 0) > 0,
   )
 
   const totalVendas = pedidosFiltrados.length
-  const vendasBaseTroca = pedidosFiltrados.filter((p) => p.tipoVenda === "base-troca").length
-  const vendasNormais = pedidosFiltrados.filter((p) => p.tipoVenda === "normal").length
-  const valorTotalVendas = pedidosFiltrados.reduce((acc, p) => acc + p.precoFinal, 0)
-  const debitoTotal = carcacasPendentes.reduce((acc, p) => acc + p.debitoCarcaca, 0)
-  const pedidosAtrasados = carcacasPendentes.filter((p) => p.statusCarcaca === "atrasado").length
+  const vendasBaseTroca = pedidosFiltrados.filter((p) => p.tipo_venda === "Base de Troca").length
+  const vendasNormais = pedidosFiltrados.filter((p) => p.tipo_venda === "Normal").length
+  const valorTotalVendas = pedidosFiltrados.reduce((acc, p) => acc + (p.valor_total || 0), 0)
+  const debitoTotal = carcacasPendentes.reduce((acc, p) => acc + (p.debito_carcaca || 0), 0)
+  const pedidosAtrasados = carcacasPendentes.filter((p) => p.status === "Atrasado").length
 
-  const vendedoresComDados = mockVendedores.map((vendedor) => {
-    const pedidosVendedor = pedidosFiltrados.filter((p) => p.vendedorId === vendedor.id)
-    const carcacasVendedor = carcacasPendentes.filter((p) => p.vendedorId === vendedor.id)
-    const debitoVendedor = carcacasVendedor.reduce((acc, p) => acc + p.debitoCarcaca, 0)
+  const vendedoresComDados = vendedores.map((vendedor) => {
+    const pedidosVendedor = pedidosFiltrados.filter((p) => p.vendedor_id === vendedor.id)
+    const carcacasVendedor = carcacasPendentes.filter((p) => p.vendedor_id === vendedor.id)
+    const debitoVendedor = carcacasVendedor.reduce((acc, p) => acc + (p.debito_carcaca || 0), 0)
 
     return {
       ...vendedor,
       totalVendas: pedidosVendedor.length,
-      valorVendas: pedidosVendedor.reduce((acc, p) => acc + p.precoFinal, 0),
+      valorVendas: pedidosVendedor.reduce((acc, p) => acc + (p.valor_total || 0), 0),
       carcacasPendentesAtual: carcacasVendedor.length,
       debitoAtual: debitoVendedor,
     }
   })
 
-  const clientesComDados = mockClientes.map((cliente) => {
-    const pedidosCliente = pedidosFiltrados.filter((p) => p.clienteId === cliente.id)
-    const carcacasCliente = carcacasPendentes.filter((p) => p.clienteId === cliente.id)
-    const debitoCliente = carcacasCliente.reduce((acc, p) => acc + p.debitoCarcaca, 0)
+  const clientesComDados = clients.map((cliente) => {
+    const pedidosCliente = pedidosFiltrados.filter((p) => p.cliente_id === cliente.id)
+    const carcacasCliente = carcacasPendentes.filter((p) => p.cliente_id === cliente.id)
+    const debitoCliente = carcacasCliente.reduce((acc, p) => acc + (p.debito_carcaca || 0), 0)
 
     return {
       ...cliente,
       totalVendas: pedidosCliente.length,
-      valorVendas: pedidosCliente.reduce((acc, p) => acc + p.precoFinal, 0),
+      valorVendas: pedidosCliente.reduce((acc, p) => acc + (p.valor_total || 0), 0),
       carcacasPendentesAtual: carcacasCliente.length,
       debitoAtual: debitoCliente,
     }
@@ -121,6 +152,16 @@ export default function RelatoriosPage() {
       title: "Relatório exportado!",
       description: `O relatório de ${tipo} foi exportado com sucesso.`,
     })
+  }
+
+  if (isLoading) {
+    return (
+      <ProtectedRoute allowedRoles={["Patrão", "Gerente", "Coordenador"]}>
+        <div className="p-6">
+          <div className="text-center text-muted-foreground">Carregando...</div>
+        </div>
+      </ProtectedRoute>
+    )
   }
 
   return (
@@ -161,9 +202,9 @@ export default function RelatoriosPage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="todos">Todos os vendedores</SelectItem>
-                      {mockVendedores.map((vendedor) => (
+                      {vendedores.map((vendedor) => (
                         <SelectItem key={vendedor.id} value={vendedor.id}>
-                          {vendedor.name}
+                          {vendedor.nome}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -252,7 +293,7 @@ export default function RelatoriosPage() {
                         .sort((a, b) => b.valorVendas - a.valorVendas)
                         .map((vendedor) => (
                           <TableRow key={vendedor.id}>
-                            <TableCell className="font-medium">{vendedor.name}</TableCell>
+                            <TableCell className="font-medium">{vendedor.nome}</TableCell>
                             <TableCell className="text-right">{vendedor.totalVendas}</TableCell>
                             <TableCell className="text-right">{formatCurrency(vendedor.valorVendas)}</TableCell>
                             <TableCell className="text-right">{vendedor.carcacasPendentesAtual}</TableCell>
@@ -288,11 +329,11 @@ export default function RelatoriosPage() {
                         .filter((c) => c.totalVendas > 0)
                         .sort((a, b) => b.valorVendas - a.valorVendas)
                         .map((cliente) => {
-                          const vendedor = mockVendedores.find((v) => v.id === cliente.vendedorId)
+                          const vendedor = vendedores.find((v) => v.id === cliente.vendedor_id)
                           return (
                             <TableRow key={cliente.id}>
-                              <TableCell className="font-medium">{cliente.name}</TableCell>
-                              <TableCell>{vendedor?.name}</TableCell>
+                              <TableCell className="font-medium">{cliente.nome}</TableCell>
+                              <TableCell>{vendedor?.nome}</TableCell>
                               <TableCell className="text-right">{cliente.totalVendas}</TableCell>
                               <TableCell className="text-right">{formatCurrency(cliente.valorVendas)}</TableCell>
                               <TableCell className="text-right">{cliente.carcacasPendentesAtual}</TableCell>
@@ -334,20 +375,21 @@ export default function RelatoriosPage() {
                         </TableRow>
                       ) : (
                         carcacasPendentes
-                          .sort((a, b) => getDaysPending(b.dataCriacao) - getDaysPending(a.dataCriacao))
+                          .sort((a, b) => getDaysPending(b.data_venda) - getDaysPending(a.data_venda))
                           .map((pedido) => {
-                            const cliente = mockClientes.find((c) => c.id === pedido.clienteId)
-                            const vendedor = mockVendedores.find((v) => v.id === pedido.vendedorId)
+                            const cliente = clients.find((c) => c.id === pedido.cliente_id)
+                            const vendedor = vendedores.find((v) => v.id === pedido.vendedor_id)
+                            const primeiroItem = pedido.order_items?.[0]
                             return (
                               <TableRow key={pedido.id}>
-                                <TableCell className="font-mono text-sm">{pedido.numero}</TableCell>
-                                <TableCell>{cliente?.name}</TableCell>
-                                <TableCell>{vendedor?.name}</TableCell>
-                                <TableCell>{pedido.produto}</TableCell>
-                                <TableCell className="text-right">{formatCurrency(pedido.debitoCarcaca)}</TableCell>
-                                <TableCell className="text-center">{getDaysPending(pedido.dataCriacao)}</TableCell>
+                                <TableCell className="font-mono text-sm">{pedido.numero_pedido}</TableCell>
+                                <TableCell>{cliente?.nome}</TableCell>
+                                <TableCell>{vendedor?.nome}</TableCell>
+                                <TableCell>{primeiroItem?.produto_nome || "-"}</TableCell>
+                                <TableCell className="text-right">{formatCurrency(pedido.debito_carcaca || 0)}</TableCell>
+                                <TableCell className="text-center">{getDaysPending(pedido.data_venda)}</TableCell>
                                 <TableCell>
-                                  <StatusBadge status={pedido.statusCarcaca} />
+                                  <StatusBadge status={mapStatusToBadge(pedido.status)} />
                                 </TableCell>
                               </TableRow>
                             )

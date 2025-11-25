@@ -4,13 +4,13 @@ import type React from "react"
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import Image from "next/image"
 import { useAuth } from "@/lib/auth-context"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Package2 } from "lucide-react"
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
@@ -45,8 +45,15 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-4 text-center">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-primary">
-            <Package2 className="h-6 w-6 text-primary-foreground" />
+          <div className="mx-auto flex items-center justify-center mb-4">
+            <Image
+              src="/logo.png"
+              alt="PLATOCOM EMBREAGENS"
+              width={300}
+              height={150}
+              className="object-contain"
+              priority
+            />
           </div>
           <div>
             <CardTitle className="text-2xl">Sistema de Carcaças</CardTitle>

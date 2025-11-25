@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useAuth } from "@/lib/auth-context"
-import { mockVendedores, mockPedidos } from "@/lib/mock-data"
+import { getVendedores, getOrders, type DatabaseVendedor } from "@/lib/supabase/database"
 import Link from "next/link"
 import { Search, TrendingUp, TrendingDown } from "lucide-react"
 import { Progress } from "@/components/ui/progress"
@@ -14,12 +14,25 @@ import { Progress } from "@/components/ui/progress"
 export default function VendedoresPage() {
   const { user } = useAuth()
   const [searchTerm, setSearchTerm] = useState("")
-  const [pedidos, setPedidos] = useState(mockPedidos)
+  const [vendedores, setVendedores] = useState<DatabaseVendedor[]>([])
+  const [orders, setOrders] = useState<any[]>([])
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    const pedidosLocal = JSON.parse(localStorage.getItem("pedidos") || "[]")
-    const todosPedidos = [...mockPedidos, ...pedidosLocal]
-    setPedidos(todosPedidos)
+    const loadData = async () => {
+      try {
+        setIsLoading(true)
+        const [vendedoresData, ordersData] = await Promise.all([getVendedores(), getOrders()])
+        setVendedores(vendedoresData)
+        setOrders(ordersData)
+      } catch (error) {
+        console.error("[v0] Error loading vendedores:", error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadData()
   }, [])
 
   const formatCurrency = (value: number) => {
@@ -29,10 +42,10 @@ export default function VendedoresPage() {
     }).format(value)
   }
 
-  const vendedoresComDados = mockVendedores.map((vendedor) => {
-    const pedidosVendedor = pedidos.filter((p) => p.vendedorId === vendedor.id)
+  const vendedoresComDados = vendedores.map((vendedor) => {
+    const pedidosVendedor = orders.filter((p) => p.vendedor_id === vendedor.id)
     const totalVendas = pedidosVendedor.length
-    const vendasBaseTroca = pedidosVendedor.filter((p) => p.tipoVenda === "base-troca").length
+    const vendasBaseTroca = pedidosVendedor.filter((p) => p.tipo_venda === "Base de Troca").length
     const percentualBaseTroca = totalVendas > 0 ? (vendasBaseTroca / totalVendas) * 100 : 0
 
     return {
@@ -44,11 +57,21 @@ export default function VendedoresPage() {
   })
 
   const vendedoresFiltrados = vendedoresComDados
-    .filter((vendedor) => vendedor.name.toLowerCase().includes(searchTerm.toLowerCase()))
+    .filter((vendedor) => vendedor.nome.toLowerCase().includes(searchTerm.toLowerCase()))
     .sort((a, b) => b.debitoTotal - a.debitoTotal)
 
   const debitoTotal = vendedoresComDados.reduce((acc, v) => acc + v.debitoTotal, 0)
   const carcacasTotal = vendedoresComDados.reduce((acc, v) => acc + v.carcacasPendentes, 0)
+
+  if (isLoading) {
+    return (
+      <ProtectedRoute allowedRoles={["Patrão", "Gerente", "Coordenador"]}>
+        <div className="p-6">
+          <div className="text-center text-muted-foreground">Carregando...</div>
+        </div>
+      </ProtectedRoute>
+    )
+  }
 
   return (
     <ProtectedRoute allowedRoles={["Patrão", "Gerente", "Coordenador"]}>
@@ -65,7 +88,7 @@ export default function VendedoresPage() {
                 <CardTitle className="text-sm font-medium">Total de Vendedores</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{mockVendedores.length}</div>
+                <div className="text-2xl font-bold">{vendedores.length}</div>
                 <p className="text-xs text-muted-foreground">Vendedores ativos</p>
               </CardContent>
             </Card>
@@ -142,7 +165,7 @@ export default function VendedoresPage() {
                               {index + 1}
                             </div>
                             <div>
-                              <p className="font-medium">{vendedor.name}</p>
+                              <p className="font-medium">{vendedor.nome}</p>
                               {vendedor.debitoTotal > 25000 && (
                                 <p className="text-xs text-red-500 flex items-center gap-1">
                                   <TrendingUp className="h-3 w-3" />

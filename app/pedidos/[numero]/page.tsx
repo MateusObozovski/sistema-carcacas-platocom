@@ -9,8 +9,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { StatusBadge } from "@/components/status-badge"
 import { useAuth } from "@/lib/auth-context"
-import { mockPedidos, mockClientes, mockVendedores } from "@/lib/mock-data"
-import type { Pedido } from "@/lib/types"
+import { getOrderByNumber, updateOrderStatus, createClient as createSupabaseClient } from "@/lib/supabase/database"
+import { createClient } from "@/lib/supabase/client"
 import { ArrowLeft, CheckCircle, Package } from "lucide-react"
 import Link from "next/link"
 import { useToast } from "@/hooks/use-toast"
@@ -26,19 +26,61 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 
+// Helper function to map database status to StatusBadge status
+function mapStatusToBadge(status: string): "aguardando" | "atrasado" | "devolvida" | "perda-total" {
+  if (status === "Aguardando Devolução") return "aguardando"
+  if (status === "Atrasado") return "atrasado"
+  if (status === "Concluído") return "devolvida"
+  if (status === "Perda Total") return "perda-total"
+  return "aguardando"
+}
+
 export default function PedidoDetalhePage() {
   const params = useParams()
   const router = useRouter()
   const { user } = useAuth()
   const { toast } = useToast()
-  const [pedido, setPedido] = useState<Pedido | null>(null)
+  const [pedido, setPedido] = useState<any>(null)
+  const [cliente, setCliente] = useState<any>(null)
+  const [vendedor, setVendedor] = useState<any>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const supabase = createClient()
 
   useEffect(() => {
-    const pedidosLocal = JSON.parse(localStorage.getItem("pedidos") || "[]")
-    const todosPedidos = [...mockPedidos, ...pedidosLocal]
-    const pedidoEncontrado = todosPedidos.find((p) => p.numero === params.numero)
-    setPedido(pedidoEncontrado || null)
-  }, [params.numero])
+    const loadData = async () => {
+      if (!params.numero || typeof params.numero !== "string") return
+
+      try {
+        setIsLoading(true)
+        const pedidoData = await getOrderByNumber(params.numero)
+        setPedido(pedidoData)
+
+        // Get cliente
+        const { data: clienteData } = await supabase
+          .from("clients")
+          .select("*")
+          .eq("id", pedidoData.cliente_id)
+          .single()
+
+        setCliente(clienteData)
+
+        // Get vendedor
+        const { data: vendedorData } = await supabase
+          .from("profiles")
+          .select("id, nome")
+          .eq("id", pedidoData.vendedor_id)
+          .single()
+
+        setVendedor(vendedorData)
+      } catch (error) {
+        console.error("[v0] Error loading pedido:", error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadData()
+  }, [params.numero, supabase])
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat("pt-BR", {
@@ -58,30 +100,56 @@ export default function PedidoDetalhePage() {
     return Math.floor(diff / (1000 * 60 * 60 * 24))
   }
 
-  const handleRegistrarDevolucao = () => {
+  const handleRegistrarDevolucao = async () => {
     if (!pedido) return
 
-    const pedidosLocal = JSON.parse(localStorage.getItem("pedidos") || "[]")
-    const todosPedidos = [...mockPedidos, ...pedidosLocal]
-    const index = todosPedidos.findIndex((p) => p.numero === pedido.numero)
+    try {
+      const dataDevolucao = new Date().toISOString()
+      await updateOrderStatus(pedido.id, "Concluído", dataDevolucao)
 
-    if (index !== -1) {
-      todosPedidos[index] = {
-        ...todosPedidos[index],
-        statusCarcaca: "devolvida",
-        dataDevolucao: new Date().toISOString().split("T")[0],
+      // Update order_items to zero debito_carcaca
+      const { error: itemsError } = await supabase
+        .from("order_items")
+        .update({ debito_carcaca: 0 })
+        .eq("order_id", pedido.id)
+        .gt("debito_carcaca", 0)
+
+      if (itemsError) {
+        console.error("[v0] Error updating order items:", itemsError)
       }
 
-      const pedidosParaSalvar = todosPedidos.filter((p) => !mockPedidos.find((mp) => mp.numero === p.numero))
-      localStorage.setItem("pedidos", JSON.stringify(pedidosParaSalvar))
-
-      setPedido(todosPedidos[index])
+      // Reload pedido
+      const pedidoAtualizado = await getOrderByNumber(params.numero as string)
+      setPedido(pedidoAtualizado)
 
       toast({
         title: "Devolução registrada!",
         description: "O débito de carcaça foi zerado automaticamente.",
       })
+    } catch (error) {
+      console.error("[v0] Error registering devolucao:", error)
+      toast({
+        title: "Erro",
+        description: "Não foi possível registrar a devolução.",
+        variant: "destructive",
+      })
     }
+  }
+
+  if (isLoading) {
+    return (
+      <ProtectedRoute>
+        <div className="flex min-h-screen flex-col">
+          <DashboardHeader />
+          <div className="flex flex-1">
+            <DashboardNav />
+            <main className="flex-1 p-6">
+              <div className="text-center text-muted-foreground">Carregando...</div>
+            </main>
+          </div>
+        </div>
+      </ProtectedRoute>
+    )
   }
 
   if (!pedido) {
@@ -106,9 +174,9 @@ export default function PedidoDetalhePage() {
     )
   }
 
-  const cliente = mockClientes.find((c) => c.id === pedido.clienteId)
-  const vendedor = mockVendedores.find((v) => v.id === pedido.vendedorId)
-  const diasPendente = getDaysPending(pedido.dataCriacao)
+  const diasPendente = getDaysPending(pedido.data_venda)
+  const primeiroItem = pedido.order_items?.[0]
+  const tipoVendaBaseTroca = pedido.tipo_venda === "Base de Troca"
 
   return (
     <ProtectedRoute>
@@ -125,11 +193,11 @@ export default function PedidoDetalhePage() {
                   </Link>
                 </Button>
                 <div className="flex-1">
-                  <h2 className="text-3xl font-bold tracking-tight">Pedido {pedido.numero}</h2>
+                  <h2 className="text-3xl font-bold tracking-tight">Pedido {pedido.numero_pedido}</h2>
                   <p className="text-muted-foreground">Detalhes completos do pedido</p>
                 </div>
-                {pedido.tipoVenda === "base-troca" &&
-                  (pedido.statusCarcaca === "aguardando" || pedido.statusCarcaca === "atrasado") && (
+                {tipoVendaBaseTroca &&
+                  (pedido.status === "Aguardando Devolução" || pedido.status === "Atrasado") && (
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
                         <Button>
@@ -141,8 +209,8 @@ export default function PedidoDetalhePage() {
                         <AlertDialogHeader>
                           <AlertDialogTitle>Confirmar devolução de carcaça</AlertDialogTitle>
                           <AlertDialogDescription>
-                            Tem certeza que deseja registrar a devolução da carcaça do pedido {pedido.numero}? O débito
-                            de {formatCurrency(pedido.debitoCarcaca)} será zerado automaticamente.
+                            Tem certeza que deseja registrar a devolução da carcaça do pedido {pedido.numero_pedido}? O
+                            débito de {formatCurrency(pedido.debito_carcaca || 0)} será zerado automaticamente.
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
@@ -162,15 +230,15 @@ export default function PedidoDetalhePage() {
                   <CardContent className="space-y-2">
                     <div>
                       <p className="text-sm text-muted-foreground">Cliente</p>
-                      <p className="font-medium">{cliente?.name}</p>
+                      <p className="font-medium">{cliente?.nome}</p>
                     </div>
                     <div>
                       <p className="text-sm text-muted-foreground">Vendedor</p>
-                      <p className="font-medium">{vendedor?.name}</p>
+                      <p className="font-medium">{vendedor?.nome}</p>
                     </div>
                     <div>
                       <p className="text-sm text-muted-foreground">Data do Pedido</p>
-                      <p className="font-medium">{formatDate(pedido.dataCriacao)}</p>
+                      <p className="font-medium">{formatDate(pedido.data_venda)}</p>
                     </div>
                   </CardContent>
                 </Card>
@@ -181,14 +249,18 @@ export default function PedidoDetalhePage() {
                   </CardHeader>
                   <CardContent className="space-y-2">
                     <div>
-                      <p className="text-sm text-muted-foreground">Produto</p>
-                      <p className="font-medium">{pedido.produto}</p>
+                      <p className="text-sm text-muted-foreground">Produtos</p>
+                      <div className="space-y-1">
+                        {pedido.order_items?.map((item: any) => (
+                          <p key={item.id} className="font-medium">
+                            {item.produto_nome} x{item.quantidade}
+                          </p>
+                        ))}
+                      </div>
                     </div>
                     <div>
                       <p className="text-sm text-muted-foreground">Tipo de Venda</p>
-                      <p className="font-medium">
-                        {pedido.tipoVenda === "base-troca" ? "Base de Troca" : "Venda Normal"}
-                      </p>
+                      <p className="font-medium">{pedido.tipo_venda}</p>
                     </div>
                   </CardContent>
                 </Card>
@@ -200,35 +272,38 @@ export default function PedidoDetalhePage() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Preço Original</span>
-                      <span className="font-medium">{formatCurrency(pedido.precoOriginal)}</span>
-                    </div>
-                    {pedido.tipoVenda === "base-troca" && (
-                      <>
+                    {pedido.order_items?.map((item: any, index: number) => (
+                      <div key={item.id} className={index > 0 ? "border-t border-border pt-3" : ""}>
+                        <div className="mb-2">
+                          <p className="text-sm font-medium">{item.produto_nome} x{item.quantidade}</p>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">Preço Unitário</span>
+                          <span className="font-medium">{formatCurrency(item.preco_unitario)}</span>
+                        </div>
+                        {item.desconto_percentual > 0 && (
+                          <div className="flex justify-between text-sm">
+                            <span className="text-muted-foreground">Desconto ({item.desconto_percentual}%)</span>
+                            <span className="font-medium text-green-500">
+                              - {formatCurrency((item.preco_unitario * item.desconto_percentual) / 100)}
+                            </span>
+                          </div>
+                        )}
                         <div className="flex justify-between">
-                          <span className="text-muted-foreground">Desconto ({pedido.desconto}%)</span>
-                          <span className="font-medium text-green-500">
-                            - {formatCurrency((pedido.precoOriginal * pedido.desconto) / 100)}
-                          </span>
+                          <span className="text-muted-foreground">Subtotal</span>
+                          <span className="font-medium">{formatCurrency(item.preco_final * item.quantidade)}</span>
                         </div>
-                        <div className="flex justify-between border-t border-border pt-3">
-                          <span className="font-semibold">Preço Final</span>
-                          <span className="text-xl font-bold">{formatCurrency(pedido.precoFinal)}</span>
-                        </div>
-                      </>
-                    )}
-                    {pedido.tipoVenda === "normal" && (
-                      <div className="flex justify-between border-t border-border pt-3">
-                        <span className="font-semibold">Preço Final</span>
-                        <span className="text-xl font-bold">{formatCurrency(pedido.precoFinal)}</span>
                       </div>
-                    )}
+                    ))}
+                    <div className="flex justify-between border-t border-border pt-3">
+                      <span className="font-semibold">Valor Total</span>
+                      <span className="text-xl font-bold">{formatCurrency(pedido.valor_total || 0)}</span>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
 
-              {pedido.tipoVenda === "base-troca" && (
+              {tipoVendaBaseTroca && (
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
@@ -240,28 +315,24 @@ export default function PedidoDetalhePage() {
                     <div className="space-y-3">
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Débito de Carcaça</span>
-                        <span className="font-medium text-yellow-500">{formatCurrency(pedido.debitoCarcaca)}</span>
+                        <span className="font-medium text-yellow-500">{formatCurrency(pedido.debito_carcaca || 0)}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Status</span>
-                        <StatusBadge status={pedido.statusCarcaca} />
+                        <StatusBadge status={mapStatusToBadge(pedido.status)} />
                       </div>
-                      {(pedido.statusCarcaca === "aguardando" || pedido.statusCarcaca === "atrasado") && (
+                      {(pedido.status === "Aguardando Devolução" || pedido.status === "Atrasado") && (
                         <>
                           <div className="flex justify-between">
                             <span className="text-muted-foreground">Dias Pendente</span>
                             <span className="font-medium">{diasPendente} dias</span>
                           </div>
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Previsão de Devolução</span>
-                            <span className="font-medium">{formatDate(pedido.dataPrevisaoDevolucao)}</span>
-                          </div>
                         </>
                       )}
-                      {pedido.statusCarcaca === "devolvida" && pedido.dataDevolucao && (
+                      {pedido.status === "Concluído" && pedido.data_devolucao && (
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">Data de Devolução</span>
-                          <span className="font-medium">{formatDate(pedido.dataDevolucao)}</span>
+                          <span className="font-medium">{formatDate(pedido.data_devolucao)}</span>
                         </div>
                       )}
                     </div>

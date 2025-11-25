@@ -12,36 +12,41 @@ create table if not exists public.profiles (
 -- Enable RLS
 alter table public.profiles enable row level security;
 
--- Policies for profiles
+-- Fixed infinite recursion by using auth.jwt() instead of querying profiles table
+-- Drop existing policies if they exist
+drop policy if exists "Users can view their own profile" on public.profiles;
+drop policy if exists "Users can update their own profile" on public.profiles;
+drop policy if exists "Admins can view all profiles" on public.profiles;
+drop policy if exists "Patrão can insert profiles" on public.profiles;
+
+-- Users can view their own profile
 create policy "Users can view their own profile"
   on public.profiles for select
   using (auth.uid() = id);
 
+-- Users can update their own profile
 create policy "Users can update their own profile"
   on public.profiles for update
   using (auth.uid() = id);
 
--- Admin users (Patrão, Gerente) can view all profiles
+-- Admin users (Patrão, Gerente) can view all profiles using JWT claims
 create policy "Admins can view all profiles"
   on public.profiles for select
   using (
-    exists (
-      select 1 from public.profiles
-      where id = auth.uid()
-      and role in ('Patrão', 'Gerente')
-    )
+    (auth.jwt()->>'role')::text in ('Patrão', 'Gerente')
   );
 
--- Only Patrão can insert new profiles
+-- Only Patrão can insert new profiles using JWT claims
 create policy "Patrão can insert profiles"
   on public.profiles for insert
   with check (
-    exists (
-      select 1 from public.profiles
-      where id = auth.uid()
-      and role = 'Patrão'
-    )
+    (auth.jwt()->>'role')::text = 'Patrão'
   );
+
+-- Service role can do everything (for triggers and API)
+create policy "Service role can do everything"
+  on public.profiles for all
+  using (auth.jwt()->>'role' = 'service_role');
 
 -- Create trigger to auto-create profile on signup
 create or replace function public.handle_new_user()

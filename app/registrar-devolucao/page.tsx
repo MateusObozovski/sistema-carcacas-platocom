@@ -22,29 +22,32 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { ProtectedRoute } from "@/components/protected-route"
 import { useAuth } from "@/lib/auth-context"
-import { mockPedidos, mockClientes } from "@/lib/mock-data"
-import type { Pedido } from "@/lib/types"
+import { getOrderByNumber, updateOrderStatus, createClient } from "@/lib/supabase/database"
+import { createClient as createSupabaseClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
 import { ArrowLeft, Search } from "lucide-react"
 import Link from "next/link"
 import { StatusBadge } from "@/components/status-badge"
 
+// Helper function to map database status to StatusBadge status
+function mapStatusToBadge(status: string): "aguardando" | "atrasado" | "devolvida" | "perda-total" {
+  if (status === "Aguardando Devolução") return "aguardando"
+  if (status === "Atrasado") return "atrasado"
+  if (status === "Concluído") return "devolvida"
+  if (status === "Perda Total") return "perda-total"
+  return "aguardando"
+}
+
 export default function RegistrarDevolucaoPage() {
   const { user } = useAuth()
   const router = useRouter()
   const { toast } = useToast()
+  const supabase = createSupabaseClient()
 
   const [numeroPedido, setNumeroPedido] = useState("")
-  const [pedidoEncontrado, setPedidoEncontrado] = useState<Pedido | null>(null)
+  const [pedidoEncontrado, setPedidoEncontrado] = useState<any>(null)
   const [isSearching, setIsSearching] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [pedidos, setPedidos] = useState<Pedido[]>([])
-
-  useEffect(() => {
-    const pedidosLocal = JSON.parse(localStorage.getItem("pedidos") || "[]")
-    const todosPedidos = [...mockPedidos, ...pedidosLocal]
-    setPedidos(todosPedidos)
-  }, [])
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat("pt-BR", {
@@ -64,58 +67,69 @@ export default function RegistrarDevolucaoPage() {
     return Math.floor(diff / (1000 * 60 * 60 * 24))
   }
 
-  const handleBuscarPedido = (e: React.FormEvent) => {
+  const handleBuscarPedido = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsSearching(true)
 
-    const pedido = pedidos.find((p) => p.numero.toLowerCase() === numeroPedido.toLowerCase())
+    try {
+      const pedido = await getOrderByNumber(numeroPedido)
 
-    if (!pedido) {
+      if (!pedido) {
+        toast({
+          title: "Pedido não encontrado",
+          description: `Não foi encontrado nenhum pedido com o número ${numeroPedido}`,
+          variant: "destructive",
+        })
+        setPedidoEncontrado(null)
+        setIsSearching(false)
+        return
+      }
+
+      if (user?.role === "Vendedor" && pedido.vendedor_id !== user.id) {
+        toast({
+          title: "Acesso negado",
+          description: "Você só pode registrar devoluções dos seus próprios pedidos",
+          variant: "destructive",
+        })
+        setPedidoEncontrado(null)
+        setIsSearching(false)
+        return
+      }
+
+      if (pedido.tipo_venda !== "Base de Troca") {
+        toast({
+          title: "Pedido inválido",
+          description: "Este pedido não é do tipo Base de Troca e não possui carcaça para devolução",
+          variant: "destructive",
+        })
+        setPedidoEncontrado(null)
+        setIsSearching(false)
+        return
+      }
+
+      if (pedido.status === "Concluído") {
+        toast({
+          title: "Carcaça já devolvida",
+          description: "A carcaça deste pedido já foi devolvida anteriormente",
+          variant: "destructive",
+        })
+        setPedidoEncontrado(null)
+        setIsSearching(false)
+        return
+      }
+
+      setPedidoEncontrado(pedido)
+    } catch (error) {
+      console.error("[v0] Error searching pedido:", error)
       toast({
-        title: "Pedido não encontrado",
-        description: `Não foi encontrado nenhum pedido com o número ${numeroPedido}`,
+        title: "Erro",
+        description: "Não foi possível buscar o pedido",
         variant: "destructive",
       })
       setPedidoEncontrado(null)
+    } finally {
       setIsSearching(false)
-      return
     }
-
-    if (user?.role === "vendedor" && pedido.vendedorId !== user.id) {
-      toast({
-        title: "Acesso negado",
-        description: "Você só pode registrar devoluções dos seus próprios pedidos",
-        variant: "destructive",
-      })
-      setPedidoEncontrado(null)
-      setIsSearching(false)
-      return
-    }
-
-    if (pedido.tipoVenda !== "base-troca") {
-      toast({
-        title: "Pedido inválido",
-        description: "Este pedido não é do tipo Base de Troca e não possui carcaça para devolução",
-        variant: "destructive",
-      })
-      setPedidoEncontrado(null)
-      setIsSearching(false)
-      return
-    }
-
-    if (pedido.statusCarcaca === "devolvida") {
-      toast({
-        title: "Carcaça já devolvida",
-        description: "A carcaça deste pedido já foi devolvida anteriormente",
-        variant: "destructive",
-      })
-      setPedidoEncontrado(null)
-      setIsSearching(false)
-      return
-    }
-
-    setPedidoEncontrado(pedido)
-    setIsSearching(false)
   }
 
   const handleRegistrarDevolucao = async () => {
@@ -123,32 +137,57 @@ export default function RegistrarDevolucaoPage() {
 
     setIsSubmitting(true)
 
-    const pedidosLocal = JSON.parse(localStorage.getItem("pedidos") || "[]")
-    const todosPedidos = [...mockPedidos, ...pedidosLocal]
-    const index = todosPedidos.findIndex((p) => p.numero === pedidoEncontrado.numero)
+    try {
+      const dataDevolucao = new Date().toISOString()
+      await updateOrderStatus(pedidoEncontrado.id, "Concluído", dataDevolucao)
 
-    if (index !== -1) {
-      todosPedidos[index] = {
-        ...todosPedidos[index],
-        statusCarcaca: "devolvida",
-        dataDevolucao: new Date().toISOString().split("T")[0],
+      // Update order_items to zero debito_carcaca
+      const { error: itemsError } = await supabase
+        .from("order_items")
+        .update({ debito_carcaca: 0 })
+        .eq("order_id", pedidoEncontrado.id)
+        .gt("debito_carcaca", 0)
+
+      if (itemsError) {
+        console.error("[v0] Error updating order items:", itemsError)
       }
-
-      const pedidosParaSalvar = todosPedidos.filter((p) => !mockPedidos.find((mp) => mp.numero === p.numero))
-      localStorage.setItem("pedidos", JSON.stringify(pedidosParaSalvar))
 
       toast({
         title: "Devolução registrada com sucesso!",
-        description: `O débito de ${formatCurrency(pedidoEncontrado.debitoCarcaca)} foi zerado automaticamente`,
+        description: `O débito de ${formatCurrency(pedidoEncontrado.debito_carcaca || 0)} foi zerado automaticamente`,
       })
 
       setTimeout(() => {
-        router.push(`/pedidos/${pedidoEncontrado.numero}`)
+        router.push(`/pedidos/${pedidoEncontrado.numero_pedido}`)
       }, 1000)
+    } catch (error) {
+      console.error("[v0] Error registering devolucao:", error)
+      toast({
+        title: "Erro",
+        description: "Não foi possível registrar a devolução",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
-  const cliente = pedidoEncontrado ? mockClientes.find((c) => c.id === pedidoEncontrado.clienteId) : null
+  const [cliente, setCliente] = useState<any>(null)
+
+  // Load cliente when pedido is found
+  useEffect(() => {
+    if (pedidoEncontrado) {
+      const loadCliente = async () => {
+        const { data } = await supabase
+          .from("clients")
+          .select("*")
+          .eq("id", pedidoEncontrado.cliente_id)
+          .single()
+        setCliente(data)
+      }
+      loadCliente()
+    }
+  }, [pedidoEncontrado, supabase])
 
   return (
     <ProtectedRoute>
@@ -203,19 +242,25 @@ export default function RegistrarDevolucaoPage() {
                 <div className="grid gap-4 md:grid-cols-2">
                   <div>
                     <p className="text-sm text-muted-foreground">Número do Pedido</p>
-                    <p className="font-mono font-medium">{pedidoEncontrado.numero}</p>
+                    <p className="font-mono font-medium">{pedidoEncontrado.numero_pedido}</p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Cliente</p>
-                    <p className="font-medium">{cliente?.name}</p>
+                    <p className="font-medium">{cliente?.nome}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">Produto</p>
-                    <p className="font-medium">{pedidoEncontrado.produto}</p>
+                    <p className="text-sm text-muted-foreground">Produtos</p>
+                    <div className="space-y-1">
+                      {pedidoEncontrado.order_items?.map((item: any) => (
+                        <p key={item.id} className="font-medium">
+                          {item.produto_nome} x{item.quantidade}
+                        </p>
+                      ))}
+                    </div>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Data do Pedido</p>
-                    <p className="font-medium">{formatDate(pedidoEncontrado.dataCriacao)}</p>
+                    <p className="font-medium">{formatDate(pedidoEncontrado.data_venda)}</p>
                   </div>
                 </div>
 
@@ -225,21 +270,18 @@ export default function RegistrarDevolucaoPage() {
                     <div>
                       <p className="text-sm text-muted-foreground">Débito de Carcaça</p>
                       <p className="text-lg font-bold text-yellow-500">
-                        {formatCurrency(pedidoEncontrado.debitoCarcaca)}
+                        {formatCurrency(pedidoEncontrado.debito_carcaca || 0)}
                       </p>
                     </div>
                     <div>
                       <p className="text-sm text-muted-foreground">Status Atual</p>
-                      <StatusBadge status={pedidoEncontrado.statusCarcaca} />
+                      <StatusBadge status={mapStatusToBadge(pedidoEncontrado.status)} />
                     </div>
                     <div>
                       <p className="text-sm text-muted-foreground">Dias Pendente</p>
-                      <p className="font-medium">{getDaysPending(pedidoEncontrado.dataCriacao)} dias</p>
+                      <p className="font-medium">{getDaysPending(pedidoEncontrado.data_venda)} dias</p>
                     </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Previsão de Devolução</p>
-                      <p className="font-medium">{formatDate(pedidoEncontrado.dataPrevisaoDevolucao)}</p>
-                    </div>
+                  </div>
                   </div>
                 </div>
 

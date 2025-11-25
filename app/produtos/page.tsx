@@ -11,45 +11,64 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Plus, Search, Edit, Trash2, Filter, ChevronDown, ChevronUp } from "lucide-react"
-import type { Product } from "@/lib/types"
-import { mockProducts } from "@/lib/mock-data"
+import { useToast } from "@/hooks/use-toast"
+import {
+  getAllProducts,
+  createProduct,
+  updateProduct,
+  deleteProduct,
+  type DatabaseProduct,
+} from "@/lib/supabase/database"
 
 export default function ProdutosPage() {
-  const [products, setProducts] = useState<Product[]>([])
+  const { toast } = useToast()
+  const [products, setProducts] = useState<DatabaseProduct[]>([])
+  const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [filterMarca, setFilterMarca] = useState<string>("all")
   const [filterTipo, setFilterTipo] = useState<string>("all")
   const [filterCategoria, setFilterCategoria] = useState<string>("all")
   const [showAddForm, setShowAddForm] = useState(false)
-  const [editingProduct, setEditingProduct] = useState<Product | null>(null)
+  const [editingProduct, setEditingProduct] = useState<DatabaseProduct | null>(null)
   const [showFilters, setShowFilters] = useState(false)
 
   const [formData, setFormData] = useState({
-    name: "",
+    nome: "",
     marca: "",
     tipo: "",
-    categoria: "kit" as Product["categoria"],
-    precoBase: "",
-    descontoMaximo: "",
+    categoria: "kit",
+    preco_base: "",
+    desconto_maximo_bt: "",
     ativo: true,
   })
 
   useEffect(() => {
-    const stored = localStorage.getItem("products")
-    if (stored) {
-      setProducts(JSON.parse(stored))
-    } else {
-      setProducts(mockProducts)
-      localStorage.setItem("products", JSON.stringify(mockProducts))
-    }
+    loadProducts()
   }, [])
+
+  const loadProducts = async () => {
+    try {
+      setLoading(true)
+      const data = await getAllProducts()
+      setProducts(data)
+    } catch (error) {
+      console.error("[v0] Error loading products:", error)
+      toast({
+        title: "Erro",
+        description: "Não foi possível carregar os produtos",
+        variant: "destructive",
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const marcas = Array.from(new Set(products.map((p) => p.marca))).sort()
   const tipos = Array.from(new Set(products.map((p) => p.tipo))).sort()
 
   const filteredProducts = products.filter((product) => {
     const matchesSearch =
-      product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      product.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
       product.marca.toLowerCase().includes(searchTerm.toLowerCase())
     const matchesMarca = filterMarca === "all" || product.marca === filterMarca
     const matchesTipo = filterTipo === "all" || product.tipo === filterTipo
@@ -58,87 +77,117 @@ export default function ProdutosPage() {
     return matchesSearch && matchesMarca && matchesTipo && matchesCategoria
   })
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (editingProduct) {
-      const updatedProducts = products.map((p) =>
-        p.id === editingProduct.id
-          ? {
-              ...editingProduct,
-              name: formData.name,
-              marca: formData.marca,
-              tipo: formData.tipo,
-              categoria: formData.categoria,
-              precoBase: Number(formData.precoBase),
-              descontoMaximo: Number(formData.descontoMaximo),
-              ativo: formData.ativo,
-            }
-          : p,
-      )
-      setProducts(updatedProducts)
-      localStorage.setItem("products", JSON.stringify(updatedProducts))
-      setEditingProduct(null)
-    } else {
-      const newProduct: Product = {
-        id: `prod${Date.now()}`,
-        name: formData.name,
-        marca: formData.marca,
-        tipo: formData.tipo,
-        categoria: formData.categoria,
-        precoBase: Number(formData.precoBase),
-        descontoMaximo: Number(formData.descontoMaximo),
-        ativo: formData.ativo,
-        dataCriacao: new Date().toISOString().split("T")[0],
-      }
-      const updatedProducts = [...products, newProduct]
-      setProducts(updatedProducts)
-      localStorage.setItem("products", JSON.stringify(updatedProducts))
-    }
+    try {
+      if (editingProduct) {
+        await updateProduct(editingProduct.id, {
+          nome: formData.nome,
+          marca: formData.marca,
+          tipo: formData.tipo,
+          categoria: formData.categoria,
+          preco_base: Number(formData.preco_base),
+          desconto_maximo_bt: Number(formData.desconto_maximo_bt),
+          ativo: formData.ativo,
+        })
 
-    setFormData({
-      name: "",
-      marca: "",
-      tipo: "",
-      categoria: "kit",
-      precoBase: "",
-      descontoMaximo: "",
-      ativo: true,
-    })
-    setShowAddForm(false)
+        toast({
+          title: "Sucesso",
+          description: "Produto atualizado com sucesso",
+        })
+        setEditingProduct(null)
+      } else {
+        await createProduct({
+          nome: formData.nome,
+          marca: formData.marca,
+          tipo: formData.tipo,
+          categoria: formData.categoria,
+          preco_base: Number(formData.preco_base),
+          desconto_maximo_bt: Number(formData.desconto_maximo_bt),
+          ativo: formData.ativo,
+        })
+
+        toast({
+          title: "Sucesso",
+          description: "Produto cadastrado com sucesso",
+        })
+      }
+
+      await loadProducts()
+      setFormData({
+        nome: "",
+        marca: "",
+        tipo: "",
+        categoria: "kit",
+        preco_base: "",
+        desconto_maximo_bt: "",
+        ativo: true,
+      })
+      setShowAddForm(false)
+    } catch (error) {
+      console.error("[v0] Error saving product:", error)
+      toast({
+        title: "Erro",
+        description: "Não foi possível salvar o produto",
+        variant: "destructive",
+      })
+    }
   }
 
-  const handleEdit = (product: Product) => {
+  const handleEdit = (product: DatabaseProduct) => {
     setEditingProduct(product)
     setFormData({
-      name: product.name,
+      nome: product.nome,
       marca: product.marca,
       tipo: product.tipo,
       categoria: product.categoria,
-      precoBase: product.precoBase.toString(),
-      descontoMaximo: product.descontoMaximo.toString(),
+      preco_base: product.preco_base.toString(),
+      desconto_maximo_bt: product.desconto_maximo_bt.toString(),
       ativo: product.ativo,
     })
     setShowAddForm(true)
   }
 
-  const handleDelete = (productId: string) => {
-    if (confirm("Tem certeza que deseja excluir este produto?")) {
-      const updatedProducts = products.filter((p) => p.id !== productId)
-      setProducts(updatedProducts)
-      localStorage.setItem("products", JSON.stringify(updatedProducts))
+  const handleDelete = async (productId: string) => {
+    if (!confirm("Tem certeza que deseja excluir este produto?")) return
+
+    try {
+      await deleteProduct(productId)
+      await loadProducts()
+      toast({
+        title: "Sucesso",
+        description: "Produto excluído com sucesso",
+      })
+    } catch (error) {
+      console.error("[v0] Error deleting product:", error)
+      toast({
+        title: "Erro",
+        description: "Não foi possível excluir o produto",
+        variant: "destructive",
+      })
     }
   }
 
-  const getCategoryLabel = (categoria: Product["categoria"]) => {
-    const labels = {
+  const getCategoryLabel = (categoria: string) => {
+    const labels: Record<string, string> = {
       kit: "Kit",
       plato: "Platô",
       mancal: "Mancal",
       disco: "Disco",
       outros: "Outros",
     }
-    return labels[categoria]
+    return labels[categoria] || categoria
+  }
+
+  if (loading) {
+    return (
+      <ProtectedRoute allowedRoles={["Patrão", "Gerente"]}>
+        <main className="p-4 md:p-6">
+          <div className="text-center py-8">Carregando produtos...</div>
+        </main>
+      </ProtectedRoute>
+    )
   }
 
   return (
@@ -169,12 +218,12 @@ export default function ProdutosPage() {
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
-                    <Label htmlFor="name">Nome do Produto</Label>
+                    <Label htmlFor="nome">Nome do Produto</Label>
                     <Input
-                      id="name"
+                      id="nome"
                       placeholder="Ex: Kit Embreagem Mercedes 1620"
-                      value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      value={formData.nome}
+                      onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
                       required
                     />
                   </div>
@@ -205,7 +254,7 @@ export default function ProdutosPage() {
                     <Label htmlFor="categoria">Categoria</Label>
                     <Select
                       value={formData.categoria}
-                      onValueChange={(value: Product["categoria"]) => setFormData({ ...formData, categoria: value })}
+                      onValueChange={(value) => setFormData({ ...formData, categoria: value })}
                     >
                       <SelectTrigger>
                         <SelectValue />
@@ -221,26 +270,26 @@ export default function ProdutosPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="precoBase">Preço Base (R$)</Label>
+                    <Label htmlFor="preco_base">Preço Base (R$)</Label>
                     <Input
-                      id="precoBase"
+                      id="preco_base"
                       type="number"
                       step="0.01"
-                      value={formData.precoBase}
-                      onChange={(e) => setFormData({ ...formData, precoBase: e.target.value })}
+                      value={formData.preco_base}
+                      onChange={(e) => setFormData({ ...formData, preco_base: e.target.value })}
                       required
                     />
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="descontoMaximo">Desconto Máximo (%)</Label>
+                    <Label htmlFor="desconto_maximo_bt">Desconto Máximo (%)</Label>
                     <Input
-                      id="descontoMaximo"
+                      id="desconto_maximo_bt"
                       type="number"
                       min="0"
                       max="100"
-                      value={formData.descontoMaximo}
-                      onChange={(e) => setFormData({ ...formData, descontoMaximo: e.target.value })}
+                      value={formData.desconto_maximo_bt}
+                      onChange={(e) => setFormData({ ...formData, desconto_maximo_bt: e.target.value })}
                       required
                     />
                   </div>
@@ -269,12 +318,12 @@ export default function ProdutosPage() {
                       onClick={() => {
                         setEditingProduct(null)
                         setFormData({
-                          name: "",
+                          nome: "",
                           marca: "",
                           tipo: "",
                           categoria: "kit",
-                          precoBase: "",
-                          descontoMaximo: "",
+                          preco_base: "",
+                          desconto_maximo_bt: "",
                           ativo: true,
                         })
                         setShowAddForm(false)
@@ -389,7 +438,7 @@ export default function ProdutosPage() {
                     <div className="flex flex-col gap-3">
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex-1">
-                          <h3 className="font-semibold text-foreground text-base leading-tight">{product.name}</h3>
+                          <h3 className="font-semibold text-foreground text-base leading-tight">{product.nome}</h3>
                           <div className="mt-1 flex flex-wrap gap-2">
                             <Badge variant="outline" className="text-xs">
                               {getCategoryLabel(product.categoria)}
@@ -413,12 +462,12 @@ export default function ProdutosPage() {
                         <div>
                           <span className="text-muted-foreground">Preço Base:</span>
                           <p className="font-semibold text-foreground">
-                            R$ {product.precoBase.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                            R$ {product.preco_base.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                           </p>
                         </div>
                         <div>
                           <span className="text-muted-foreground">Desc. Máx:</span>
-                          <p className="font-medium text-foreground">{product.descontoMaximo}%</p>
+                          <p className="font-medium text-foreground">{product.desconto_maximo_bt}%</p>
                         </div>
                       </div>
 
@@ -469,16 +518,16 @@ export default function ProdutosPage() {
                 <tbody>
                   {filteredProducts.map((product) => (
                     <tr key={product.id} className="border-b border-border">
-                      <td className="py-4 text-sm font-medium text-foreground">{product.name}</td>
+                      <td className="py-4 text-sm font-medium text-foreground">{product.nome}</td>
                       <td className="py-4 text-sm text-muted-foreground">{product.marca}</td>
                       <td className="py-4 text-sm text-muted-foreground">{product.tipo}</td>
                       <td className="py-4 text-sm text-muted-foreground">
                         <Badge variant="outline">{getCategoryLabel(product.categoria)}</Badge>
                       </td>
                       <td className="py-4 text-sm text-foreground">
-                        R$ {product.precoBase.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                        R$ {product.preco_base.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                       </td>
-                      <td className="py-4 text-sm text-muted-foreground">{product.descontoMaximo}%</td>
+                      <td className="py-4 text-sm text-muted-foreground">{product.desconto_maximo_bt}%</td>
                       <td className="py-4">
                         <Badge variant={product.ativo ? "default" : "secondary"}>
                           {product.ativo ? "Ativo" : "Inativo"}
