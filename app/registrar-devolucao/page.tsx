@@ -282,7 +282,6 @@ export default function RegistrarDevolucaoPage() {
                       <p className="font-medium">{getDaysPending(pedidoEncontrado.data_venda)} dias</p>
                     </div>
                   </div>
-                  </div>
                 </div>
 
                 <div className="flex gap-3">
