@@ -159,11 +159,12 @@ export default function ProdutosPage() {
         title: "Sucesso",
         description: "Produto excluído com sucesso",
       })
-    } catch (error) {
+    } catch (error: any) {
       console.error("[v0] Error deleting product:", error)
+      const errorMessage = error?.message || "Não foi possível excluir o produto"
       toast({
         title: "Erro",
-        description: "Não foi possível excluir o produto",
+        description: errorMessage,
         variant: "destructive",
       })
     }
@@ -182,7 +183,7 @@ export default function ProdutosPage() {
 
   if (loading) {
     return (
-      <ProtectedRoute allowedRoles={["Patrão", "Gerente"]}>
+      <ProtectedRoute allowedRoles={["Patrão", "Gerente", "Coordenador", "Vendedor"]}>
         <main className="p-4 md:p-6">
           <div className="text-center py-8">Carregando produtos...</div>
         </main>
@@ -191,7 +192,7 @@ export default function ProdutosPage() {
   }
 
   return (
-    <ProtectedRoute allowedRoles={["Patrão", "Gerente"]}>
+    <ProtectedRoute allowedRoles={["Patrão", "Gerente", "Coordenador", "Vendedor"]}>
       <main className="p-4 md:p-6">
         <div className="mb-4 md:mb-6">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">

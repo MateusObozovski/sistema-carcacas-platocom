@@ -40,6 +40,8 @@ export interface DatabaseOrder {
   data_venda: string
   data_devolucao?: string
   observacoes?: string
+  numero_pedido_origem?: string
+  empresa?: "Platocom" | "R.D.C" | "Rita de Cássia" | "Tork" | "Thiago"
   created_at: string
 }
 
@@ -111,6 +113,23 @@ export async function updateProduct(id: string, product: Partial<DatabaseProduct
 
 export async function deleteProduct(id: string) {
   const supabase = createClient()
+  
+  // Verificar se o produto foi usado em algum pedido
+  const { data: orderItems, error: checkError } = await supabase
+    .from("order_items")
+    .select("id")
+    .eq("produto_id", id)
+    .limit(1)
+
+  if (checkError) {
+    console.error("[v0] Error checking product usage:", checkError)
+    throw checkError
+  }
+
+  if (orderItems && orderItems.length > 0) {
+    throw new Error("Não é possível excluir um produto que já foi usado em pedidos anteriores")
+  }
+
   const { error } = await supabase.from("products").delete().eq("id", id)
 
   if (error) {

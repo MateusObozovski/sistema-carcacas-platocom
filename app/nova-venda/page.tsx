@@ -4,14 +4,13 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { ProtectedRoute } from "@/components/protected-route"
 import { useAuth } from "@/lib/auth-context"
-import { getClients, generateOrderNumber, getProducts, createOrder, type DatabaseProduct } from "@/lib/supabase/database"
+import { getClients, generateOrderNumber, getProducts, createOrder, getVendedores, type DatabaseProduct } from "@/lib/supabase/database"
 import { useToast } from "@/hooks/use-toast"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
@@ -35,9 +34,13 @@ export default function NovaVendaPage() {
   const { toast } = useToast()
 
   const [clienteId, setClienteId] = useState("")
-  const [tipoVenda, setTipoVenda] = useState<"normal" | "base-troca">("normal")
+  const [vendedorId, setVendedorId] = useState("")
+  const tipoVenda = "base-troca" // Todas as vendas são Base de Troca
   const [observacoes, setObservacoes] = useState("")
+  const [numeroPedidoOrigem, setNumeroPedidoOrigem] = useState("")
+  const [empresa, setEmpresa] = useState<"Platocom" | "R.D.C" | "Rita de Cássia" | "Tork" | "Thiago" | "none">("none")
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [vendedores, setVendedores] = useState<any[]>([])
 
   const [produtos, setProdutos] = useState<DatabaseProduct[]>([])
   const [clientes, setClientes] = useState<any[]>([])
@@ -80,6 +83,15 @@ export default function NovaVendaPage() {
         ])
         setProdutos(productsData)
         setClientes(clientsData)
+
+        // Se não for vendedor, carregar lista de vendedores
+        if (user && user.role !== "Vendedor") {
+          const vendedoresData = await getVendedores()
+          setVendedores(vendedoresData)
+        } else if (user?.role === "Vendedor") {
+          // Se for vendedor, definir automaticamente
+          setVendedorId(user.id)
+        }
       } catch (error) {
         console.error("[v0] Error loading data:", error)
       } finally {
@@ -124,7 +136,7 @@ export default function NovaVendaPage() {
     if (!produto) return
 
     const precoOriginal = produto.preco_base
-    const valorDesconto = tipoVenda === "base-troca" ? (currentPreco * currentDesconto) / 100 : 0
+    const valorDesconto = (currentPreco * currentDesconto) / 100
     const precoFinal = currentPreco - valorDesconto
     const subtotal = precoFinal * currentQuantidade
     const debitoCarcaca = valorDesconto * currentQuantidade
@@ -136,7 +148,7 @@ export default function NovaVendaPage() {
       quantidade: currentQuantidade,
       precoUnitario: precoFinal,
       precoOriginal: precoOriginal,
-      desconto: tipoVenda === "base-troca" ? currentDesconto : 0,
+      desconto: currentDesconto,
       subtotal,
       debitoCarcaca,
     }
@@ -162,9 +174,7 @@ export default function NovaVendaPage() {
     if (produto) {
       setCurrentPreco(produto.preco_base)
       // Set max discount based on product
-      if (tipoVenda === "base-troca") {
-        setCurrentDesconto(Math.min(produto.desconto_maximo_bt, 15))
-      }
+      setCurrentDesconto(Math.min(produto.desconto_maximo_bt, 15))
     }
   }
 
@@ -186,10 +196,17 @@ export default function NovaVendaPage() {
     e.preventDefault()
     setIsSubmitting(true)
 
-    if (!clienteId || items.length === 0 || !user?.id) {
+    // Determinar o vendedor responsável
+    const vendedorResponsavel = user?.role === "Vendedor" ? user.id : vendedorId
+
+    if (!clienteId || items.length === 0 || !vendedorResponsavel) {
       toast({
         title: "Erro",
-        description: items.length === 0 ? "Adicione pelo menos um item" : "Selecione um cliente",
+        description: items.length === 0 
+          ? "Adicione pelo menos um item" 
+          : !clienteId 
+          ? "Selecione um cliente"
+          : "Selecione o vendedor responsável",
         variant: "destructive",
       })
       setIsSubmitting(false)
@@ -203,13 +220,15 @@ export default function NovaVendaPage() {
       const order = {
         numero_pedido: numeroPedido,
         cliente_id: clienteId,
-        vendedor_id: user.id,
-        tipo_venda: tipoVenda === "base-troca" ? "Base de Troca" : "Normal",
+        vendedor_id: vendedorResponsavel,
+        tipo_venda: "Base de Troca",
         valor_total: totalFinal,
         debito_carcaca: totalDebitoCarcaca,
-        status: tipoVenda === "base-troca" ? "Aguardando Devolução" : "Concluído",
+        status: "Aguardando Devolução",
         data_venda: new Date().toISOString(),
         observacoes: observacoes || undefined,
+        numero_pedido_origem: numeroPedidoOrigem.trim() || undefined,
+        empresa: empresa && empresa !== "none" ? empresa : undefined,
       }
 
       // Create order items
@@ -221,7 +240,7 @@ export default function NovaVendaPage() {
         desconto_percentual: item.desconto,
         preco_final: item.precoUnitario,
         debito_carcaca: item.debitoCarcaca,
-        tipo_venda: tipoVenda === "base-troca" ? "Base de Troca" : "Normal",
+        tipo_venda: "Base de Troca",
       }))
 
       await createOrder(order, orderItems)
@@ -297,22 +316,54 @@ export default function NovaVendaPage() {
                     </Select>
                   </div>
 
-                  <div className="space-y-3">
-                    <Label>Tipo de Venda *</Label>
-                    <RadioGroup value={tipoVenda} onValueChange={(v) => setTipoVenda(v as "normal" | "base-troca")}>
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="normal" id="normal" />
-                        <Label htmlFor="normal" className="font-normal cursor-pointer">
-                          Venda Normal (sem carcaça)
-                        </Label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="base-troca" id="base-troca" />
-                        <Label htmlFor="base-troca" className="font-normal cursor-pointer">
-                          Base de Troca (desconto de 5% a 15%)
-                        </Label>
-                      </div>
-                    </RadioGroup>
+                  {user?.role !== "Vendedor" && (
+                    <div className="space-y-2">
+                      <Label htmlFor="vendedor">Vendedor Responsável *</Label>
+                      <Select value={vendedorId} onValueChange={setVendedorId} required>
+                        <SelectTrigger id="vendedor">
+                          <SelectValue placeholder="Selecione o vendedor" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {vendedores.map((vendedor) => (
+                            <SelectItem key={vendedor.id} value={vendedor.id}>
+                              {vendedor.nome}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="numeroPedidoOrigem">Número do Pedido Origem</Label>
+                      <Input
+                        id="numeroPedidoOrigem"
+                        placeholder="Ex: PED-12345"
+                        value={numeroPedidoOrigem}
+                        onChange={(e) => setNumeroPedidoOrigem(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="empresa">Empresa</Label>
+                      <Select 
+                        value={empresa || "none"} 
+                        onValueChange={(v) => setEmpresa(v === "none" ? "" : (v as any))}
+                      >
+                        <SelectTrigger id="empresa">
+                          <SelectValue placeholder="Selecione a empresa (opcional)" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Nenhuma</SelectItem>
+                          <SelectItem value="Platocom">Platocom</SelectItem>
+                          <SelectItem value="R.D.C">R.D.C</SelectItem>
+                          <SelectItem value="Rita de Cássia">Rita de Cássia</SelectItem>
+                          <SelectItem value="Tork">Tork</SelectItem>
+                          <SelectItem value="Thiago">Thiago</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
 
                   <div className="space-y-2">
@@ -449,18 +500,16 @@ export default function NovaVendaPage() {
                       />
                     </div>
 
-                    {tipoVenda === "base-troca" && (
-                      <div className="space-y-2">
-                        <Label>Desconto (%)</Label>
-                        <Input
-                          type="number"
-                          min="5"
-                          max="15"
-                          value={currentDesconto}
-                          onChange={(e) => setCurrentDesconto(Number(e.target.value))}
-                        />
-                      </div>
-                    )}
+                    <div className="space-y-2">
+                      <Label>Desconto (%)</Label>
+                      <Input
+                        type="number"
+                        min="5"
+                        max="15"
+                        value={currentDesconto}
+                        onChange={(e) => setCurrentDesconto(Number(e.target.value))}
+                      />
+                    </div>
                   </div>
 
                   <Button type="button" onClick={handleAddItem} className="w-full">
@@ -583,7 +632,7 @@ export default function NovaVendaPage() {
 
                   <Button
                     type="submit"
-                    disabled={isSubmitting || !clienteId || items.length === 0}
+                    disabled={isSubmitting || !clienteId || items.length === 0 || (user?.role !== "Vendedor" && !vendedorId)}
                     className="w-full"
                     size="lg"
                   >

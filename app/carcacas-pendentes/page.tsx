@@ -31,8 +31,10 @@ export default function CarcacasPendentesPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFiltro, setStatusFiltro] = useState<"todos" | "aguardando" | "atrasado">("todos")
   const [vendedorFiltro, setVendedorFiltro] = useState<string>("todos")
+  const [clienteFiltro, setClienteFiltro] = useState<string>("todos")
   const [carcacasPendentes, setCarcacasPendentes] = useState<any[]>([])
   const [vendedores, setVendedores] = useState<any[]>([])
+  const [clientes, setClientes] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
   const supabase = createBrowserClient(
@@ -43,7 +45,11 @@ export default function CarcacasPendentesPage() {
   useEffect(() => {
     const fetchCarcacas = async () => {
       try {
-        if (!user?.id) return
+        setLoading(true)
+        if (!user?.id) {
+          setLoading(false)
+          return
+        }
 
         const { data: orderItems, error } = await supabase
           .from("order_items")
@@ -73,11 +79,12 @@ export default function CarcacasPendentesPage() {
           `,
           )
           .gt("debito_carcaca", 0)
-          .eq("tipo_venda", "base-troca")
+          .eq("tipo_venda", "Base de Troca")
           .order("created_at", { ascending: false })
 
         if (error) {
           console.error("[v0] Error fetching carcacas:", error)
+          setLoading(false)
           return
         }
 
@@ -88,6 +95,7 @@ export default function CarcacasPendentesPage() {
 
         setCarcacasPendentes(filtered)
 
+        // Carregar vendedores (para admins)
         if (user?.role === "Patrão" || user?.role === "Gerente" || user?.role === "Coordenador") {
           const { data: vendedoresData } = await supabase
             .from("profiles")
@@ -98,6 +106,21 @@ export default function CarcacasPendentesPage() {
 
           setVendedores(vendedoresData || [])
         }
+
+        // Carregar clientes únicos das carcaças pendentes
+        const clientesUnicos = new Map()
+        filtered.forEach((item: any) => {
+          if (item.orders?.clients) {
+            const cliente = item.orders.clients
+            if (!clientesUnicos.has(cliente.id)) {
+              clientesUnicos.set(cliente.id, {
+                id: cliente.id,
+                nome: cliente.nome,
+              })
+            }
+          }
+        })
+        setClientes(Array.from(clientesUnicos.values()).sort((a, b) => a.nome.localeCompare(b.nome)))
       } catch (err) {
         console.error("[v0] Error in fetchCarcacas:", err)
       } finally {
@@ -106,7 +129,7 @@ export default function CarcacasPendentesPage() {
     }
 
     fetchCarcacas()
-  }, [user?.id, user?.role])
+  }, [user?.id, user?.role, supabase])
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat("pt-BR", {
@@ -163,11 +186,18 @@ export default function CarcacasPendentesPage() {
       const matchSearch =
         item.orders?.numero_pedido?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         item.orders?.clients?.nome?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.orders?.profiles?.nome?.toLowerCase().includes(searchTerm.toLowerCase())
+        item.orders?.profiles?.nome?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.produto_nome?.toLowerCase().includes(searchTerm.toLowerCase())
 
       const matchVendedor = vendedorFiltro === "todos" || item.orders?.vendedor_id === vendedorFiltro
+      const matchCliente = clienteFiltro === "todos" || item.orders?.cliente_id === clienteFiltro
 
-      return matchSearch && matchVendedor
+      const matchStatus =
+        statusFiltro === "todos" ||
+        (statusFiltro === "atrasado" && getDaysPending(item.created_at) > 30) ||
+        (statusFiltro === "aguardando" && getDaysPending(item.created_at) <= 30)
+
+      return matchSearch && matchVendedor && matchCliente && matchStatus
     })
     .sort((a, b) => {
       const diasA = getDaysPending(a.created_at)
@@ -243,11 +273,11 @@ export default function CarcacasPendentesPage() {
             <CardDescription>Busque e filtre carcaças pendentes</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-4 md:grid-cols-3">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
               <div className="relative">
                 <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Buscar por número, cliente..."
+                  placeholder="Buscar por número, cliente, produto..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-9"
@@ -268,6 +298,29 @@ export default function CarcacasPendentesPage() {
                   </SelectContent>
                 </Select>
               )}
+              <Select value={clienteFiltro} onValueChange={setClienteFiltro}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Cliente" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos os clientes</SelectItem>
+                  {clientes.map((cliente) => (
+                    <SelectItem key={cliente.id} value={cliente.id}>
+                      {cliente.nome}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={statusFiltro} onValueChange={(v) => setStatusFiltro(v as any)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos os status</SelectItem>
+                  <SelectItem value="aguardando">Aguardando (≤30 dias)</SelectItem>
+                  <SelectItem value="atrasado">Atrasado (&gt;30 dias)</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </CardContent>
         </Card>
@@ -295,7 +348,12 @@ export default function CarcacasPendentesPage() {
               <TableBody>
                 {filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center text-muted-foreground">
+                    <TableCell
+                      colSpan={
+                        user?.role === "Patrão" || user?.role === "Gerente" || user?.role === "Coordenador" ? 7 : 6
+                      }
+                      className="text-center text-muted-foreground"
+                    >
                       Nenhuma carcaça pendente encontrada
                     </TableCell>
                   </TableRow>

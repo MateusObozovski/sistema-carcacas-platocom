@@ -59,32 +59,41 @@ export function DashboardHeader({ onMenuClick }: DashboardHeaderProps) {
         </div>
 
         {/* Menu de usuário */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-2 bg-zinc-800 border-zinc-700 text-white hover:bg-zinc-700"
-            >
-              <User className="h-4 w-4" />
-              <span className="hidden sm:inline">{user?.name}</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56 bg-zinc-800 border-zinc-700">
-            <DropdownMenuLabel>
-              <div className="flex flex-col space-y-1">
-                <p className="text-sm font-medium text-white">{user?.name}</p>
-                <p className="text-xs text-gray-400">{user?.email}</p>
-                <p className="text-xs text-gray-400">{user && getRoleLabel(user.role)}</p>
-              </div>
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator className="bg-zinc-700" />
-            <DropdownMenuItem onClick={handleLogout} className="text-red-400 hover:bg-zinc-700">
-              <LogOut className="mr-2 h-4 w-4" />
-              Sair
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <div className="flex items-center gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2 bg-zinc-800 border-zinc-700 text-white hover:bg-zinc-700"
+              >
+                <User className="h-4 w-4" />
+                <span className="hidden sm:inline">{user?.name || user?.email}</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56 bg-zinc-800 border-zinc-700">
+              <DropdownMenuLabel>
+                <div className="flex flex-col space-y-1">
+                  <p className="text-sm font-medium text-white">{user?.name || user?.email}</p>
+                  {user?.email && user?.name && (
+                    <p className="text-xs text-gray-400">{user.email}</p>
+                  )}
+                  <p className="text-xs text-gray-400">{user && getRoleLabel(user.role)}</p>
+                </div>
+              </DropdownMenuLabel>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleLogout}
+            className="gap-2 bg-zinc-800 border-zinc-700 text-white hover:bg-red-600 hover:border-red-600"
+            title="Sair"
+          >
+            <LogOut className="h-4 w-4" />
+            <span className="hidden sm:inline">Sair</span>
+          </Button>
+        </div>
       </div>
     </header>
   )

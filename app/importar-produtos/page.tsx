@@ -151,7 +151,7 @@ export default function ImportarProdutos() {
   }
 
   return (
-    <ProtectedRoute allowedRoles={["Patrão", "Gerente"]}>
+    <ProtectedRoute allowedRoles={["Patrão", "Gerente", "Coordenador", "Vendedor"]}>
       <main className="p-8">
         <div className="max-w-4xl mx-auto space-y-6">
           <div>

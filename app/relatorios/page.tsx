@@ -47,23 +47,31 @@ export default function RelatoriosPage() {
     const loadData = async () => {
       try {
         setIsLoading(true)
+        if (!user) {
+          setIsLoading(false)
+          return
+        }
+        
         const [ordersData, clientsData, vendedoresData] = await Promise.all([
           getOrders(),
           getClients(),
           getVendedores(),
         ])
-        setOrders(ordersData)
-        setClients(clientsData)
-        setVendedores(vendedoresData)
+        setOrders(ordersData || [])
+        setClients(clientsData || [])
+        setVendedores(vendedoresData || [])
       } catch (error) {
         console.error("[v0] Error loading relatorios data:", error)
+        setOrders([])
+        setClients([])
+        setVendedores([])
       } finally {
         setIsLoading(false)
       }
     }
 
     loadData()
-  }, [])
+  }, [user])
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat("pt-BR", {
@@ -262,13 +270,123 @@ export default function RelatoriosPage() {
             </Card>
           </div>
 
-          <Tabs defaultValue="vendedores" className="space-y-4">
+          <Tabs defaultValue="desempenho-mensal" className="space-y-4">
             <TabsList>
+              <TabsTrigger value="desempenho-mensal">Desempenho Mensal</TabsTrigger>
               <TabsTrigger value="vendedores">Por Vendedor</TabsTrigger>
               <TabsTrigger value="clientes">Por Cliente</TabsTrigger>
               <TabsTrigger value="carcacas">Carcaças Pendentes</TabsTrigger>
               <TabsTrigger value="exportar">Exportar</TabsTrigger>
             </TabsList>
+
+            <TabsContent value="desempenho-mensal" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Desempenho Mensal por Vendedor</CardTitle>
+                  <CardDescription>Análise de pedidos e carcaças devolvidas mês a mês</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {(() => {
+                    // Agrupar pedidos por mês/ano e vendedor
+                    const desempenhoMensal: Record<string, Record<string, { pedidos: number; carcaçasDevolvidas: number }>> = {}
+
+                    orders.forEach((pedido) => {
+                      if (user?.role === "Vendedor" && pedido.vendedor_id !== user.id) return
+                      if (vendedorFiltro !== "todos" && pedido.vendedor_id !== vendedorFiltro) return
+
+                      const dataVenda = new Date(pedido.data_venda)
+                      const mesAno = `${dataVenda.getFullYear()}-${String(dataVenda.getMonth() + 1).padStart(2, "0")}`
+                      const vendedorId = pedido.vendedor_id
+
+                      if (!desempenhoMensal[mesAno]) {
+                        desempenhoMensal[mesAno] = {}
+                      }
+                      if (!desempenhoMensal[mesAno][vendedorId]) {
+                        desempenhoMensal[mesAno][vendedorId] = { pedidos: 0, carcaçasDevolvidas: 0 }
+                      }
+
+                      desempenhoMensal[mesAno][vendedorId].pedidos++
+
+                      // Contar carcaças devolvidas (pedidos concluídos que eram base de troca)
+                      if (pedido.tipo_venda === "Base de Troca" && pedido.status === "Concluído") {
+                        desempenhoMensal[mesAno][vendedorId].carcaçasDevolvidas++
+                      }
+                    })
+
+                    // Converter para array e ordenar
+                    const mesesOrdenados = Object.keys(desempenhoMensal).sort().reverse()
+
+                    return (
+                      <div className="space-y-6">
+                        {mesesOrdenados.map((mesAno) => {
+                          const [ano, mes] = mesAno.split("-")
+                          const nomeMes = new Date(parseInt(ano), parseInt(mes) - 1).toLocaleDateString("pt-BR", {
+                            month: "long",
+                            year: "numeric",
+                          })
+
+                          return (
+                            <div key={mesAno} className="space-y-2">
+                              <h3 className="text-lg font-semibold capitalize">{nomeMes}</h3>
+                              <Table>
+                                <TableHeader>
+                                  <TableRow>
+                                    <TableHead>Vendedor</TableHead>
+                                    <TableHead className="text-right">Pedidos</TableHead>
+                                    <TableHead className="text-right">Carcaças Devolvidas</TableHead>
+                                    <TableHead className="text-right">Taxa de Devolução</TableHead>
+                                  </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                  {Object.entries(desempenhoMensal[mesAno])
+                                    .map(([vendedorId, dados]) => {
+                                      const vendedor = vendedores.find((v) => v.id === vendedorId)
+                                      const taxaDevolucao =
+                                        dados.pedidos > 0 ? ((dados.carcaçasDevolvidas / dados.pedidos) * 100).toFixed(1) : "0.0"
+
+                                      return {
+                                        vendedorNome: vendedor?.nome || "Desconhecido",
+                                        ...dados,
+                                        taxaDevolucao: `${taxaDevolucao}%`,
+                                      }
+                                    })
+                                    .sort((a, b) => b.pedidos - a.pedidos)
+                                    .map((item, idx) => (
+                                      <TableRow key={`${mesAno}-${idx}`}>
+                                        <TableCell className="font-medium">{item.vendedorNome}</TableCell>
+                                        <TableCell className="text-right">{item.pedidos}</TableCell>
+                                        <TableCell className="text-right">{item.carcaçasDevolvidas}</TableCell>
+                                        <TableCell className="text-right">
+                                          <span
+                                            className={
+                                              parseFloat(item.taxaDevolucao) >= 80
+                                                ? "font-semibold text-green-600"
+                                                : parseFloat(item.taxaDevolucao) >= 50
+                                                  ? "font-semibold text-yellow-600"
+                                                  : "font-semibold text-red-600"
+                                            }
+                                          >
+                                            {item.taxaDevolucao}
+                                          </span>
+                                        </TableCell>
+                                      </TableRow>
+                                    ))}
+                                </TableBody>
+                              </Table>
+                            </div>
+                          )
+                        })}
+                        {mesesOrdenados.length === 0 && (
+                          <div className="text-center text-muted-foreground py-8">
+                            Nenhum dado disponível para o período selecionado
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })()}
+                </CardContent>
+              </Card>
+            </TabsContent>
 
             <TabsContent value="vendedores" className="space-y-4">
               <Card>
