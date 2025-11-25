@@ -9,10 +9,13 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Download } from "lucide-react"
+import { createProduct } from "@/lib/supabase/database"
+import { useToast } from "@/hooks/use-toast"
 import type { Product } from "@/lib/types"
 
 export default function ImportarProdutos() {
   const { user } = useAuth()
+  const { toast } = useToast()
   const [marca, setMarca] = useState("")
   const [tipo, setTipo] = useState("")
   const [textData, setTextData] = useState("")
@@ -110,7 +113,7 @@ export default function ImportarProdutos() {
     return products
   }
 
-  const handleImport = () => {
+  const handleImport = async () => {
     if (!marca || !tipo || !textData) {
       setResult({ success: 0, errors: ["Preencha Marca, Tipo e cole os dados da planilha"] })
       return
@@ -128,22 +131,51 @@ export default function ImportarProdutos() {
         return
       }
 
-      // Get existing products
-      const existingProducts = JSON.parse(localStorage.getItem("products") || "[]")
+      // Criar produtos no Supabase
+      const errors: string[] = []
+      let successCount = 0
 
-      // Add new products
-      const allProducts = [...existingProducts, ...newProducts]
-      localStorage.setItem("products", JSON.stringify(allProducts))
+      for (const product of newProducts) {
+        try {
+          await createProduct({
+            nome: product.name,
+            marca: product.marca,
+            tipo: product.tipo,
+            categoria: product.categoria,
+            aplicacao: product.aplicacao || undefined,
+            diametro: product.diametro || undefined,
+            codigo_fabrica: product.codigoFabrica || undefined,
+            preco_base: product.precoBase,
+            desconto_maximo_bt: product.descontoMaximo,
+            ativo: product.ativo,
+          })
+          successCount++
+        } catch (error: any) {
+          errors.push(`Erro ao criar ${product.name}: ${error.message || "Erro desconhecido"}`)
+        }
+      }
+
+      if (successCount > 0) {
+        toast({
+          title: "Importação concluída",
+          description: `${successCount} produtos importados com sucesso`,
+        })
+      }
 
       setResult({
-        success: newProducts.length,
-        errors: [],
+        success: successCount,
+        errors,
       })
       setTextData("")
-    } catch (error) {
+    } catch (error: any) {
       setResult({
         success: 0,
-        errors: [`Erro ao processar dados: ${error}`],
+        errors: [`Erro ao processar dados: ${error.message || "Erro desconhecido"}`],
+      })
+      toast({
+        title: "Erro na importação",
+        description: "Não foi possível processar os dados",
+        variant: "destructive",
       })
     } finally {
       setImporting(false)

@@ -1,10 +1,46 @@
 import { createClient } from "@supabase/supabase-js"
 import { NextResponse } from "next/server"
+import { rateLimitByIP } from "@/lib/rate-limit"
+
+// Helper para obter IP do request
+function getIP(request: Request): string {
+  const forwarded = request.headers.get("x-forwarded-for")
+  const realIP = request.headers.get("x-real-ip")
+  return forwarded?.split(",")[0] || realIP || "unknown"
+}
 
 // This route uses the service role key to create users
 // Only run this once during initial setup
-export async function POST() {
+export async function POST(request: Request) {
   try {
+    // Rate limiting muito restritivo para esta rota sensível
+    const ip = getIP(request)
+    const rateLimitResult = await rateLimitByIP(ip, {
+      interval: 3600000, // 1 hora
+      uniqueTokenPerInterval: 1, // apenas 1 execução por hora
+    })
+
+    if (!rateLimitResult.success) {
+      return NextResponse.json(
+        {
+          error: "Esta operação só pode ser executada uma vez por hora.",
+          retryAfter: Math.ceil((rateLimitResult.reset - Date.now()) / 1000),
+        },
+        {
+          status: 429,
+          headers: {
+            "Retry-After": Math.ceil((rateLimitResult.reset - Date.now()) / 1000).toString(),
+          },
+        },
+      )
+    }
+
+    // Verificar se SUPABASE_SERVICE_ROLE_KEY está configurado
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      console.error("[v0] SUPABASE_SERVICE_ROLE_KEY não configurado")
+      return NextResponse.json({ error: "Erro de configuração do servidor" }, { status: 500 })
+    }
+
     // Create admin client with service role
     const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
       auth: {
@@ -68,7 +104,7 @@ export async function POST() {
 
       if (error) {
         console.error(`Error creating user ${userData.email}:`, error)
-        results.push({ email: userData.email, status: "error", error: error.message })
+        results.push({ email: userData.email, status: "error", error: "Erro ao criar usuário" })
       } else {
         console.log(`User created: ${userData.email}`)
         results.push({ email: userData.email, status: "success", id: data.user?.id })
@@ -78,10 +114,15 @@ export async function POST() {
     return NextResponse.json({
       success: true,
       message: "User setup completed",
-      results,
+      results: results.map((r) => ({
+        email: r.email,
+        status: r.status,
+        ...(r.id && { id: r.id }),
+      })),
     })
   } catch (error: any) {
     console.error("Setup error:", error)
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 })
+    // Não expor detalhes internos
+    return NextResponse.json({ success: false, error: "Erro interno do servidor" }, { status: 500 })
   }
 }

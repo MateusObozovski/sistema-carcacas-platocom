@@ -11,41 +11,72 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ArrowLeft } from "lucide-react"
-import type { User, UserRole } from "@/lib/types"
+import { useToast } from "@/hooks/use-toast"
+import type { UserRole } from "@/lib/types"
 
 export default function CadastrarVendedorPage() {
   const router = useRouter()
+  const { toast } = useToast()
   const [formData, setFormData] = useState({
     name: "",
     email: "",
     password: "",
     role: "Vendedor" as UserRole,
   })
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setIsSubmitting(true)
 
-    const newUser: User = {
-      id: `user${Date.now()}`,
-      name: formData.name,
-      email: formData.email,
-      password: formData.password,
-      role: formData.role,
+    try {
+      const response = await fetch("/api/create-user", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(formData),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        toast({
+          title: "Erro",
+          description: data.error || "Não foi possível cadastrar o usuário",
+          variant: "destructive",
+        })
+        setIsSubmitting(false)
+        return
+      }
+
+      toast({
+        title: "Sucesso",
+        description: "Usuário cadastrado com sucesso!",
+      })
+
+      // Limpar formulário
+      setFormData({
+        name: "",
+        email: "",
+        password: "",
+        role: "Vendedor",
+      })
+
+      // Redirecionar após um breve delay
+      setTimeout(() => {
+        router.push("/usuarios")
+      }, 1000)
+    } catch (error: any) {
+      console.error("[v0] Error creating user:", error)
+      toast({
+        title: "Erro",
+        description: "Não foi possível cadastrar o usuário",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSubmitting(false)
     }
-
-    const stored = localStorage.getItem("users")
-    const users: User[] = stored ? JSON.parse(stored) : []
-
-    if (users.some((u) => u.email === formData.email)) {
-      alert("Este email já está cadastrado!")
-      return
-    }
-
-    users.push(newUser)
-    localStorage.setItem("users", JSON.stringify(users))
-
-    alert("Vendedor cadastrado com sucesso!")
-    router.push("/usuarios")
   }
 
   return (
@@ -125,8 +156,8 @@ export default function CadastrarVendedorPage() {
                 </ul>
               </div>
 
-              <Button type="submit" className="w-full">
-                Cadastrar Vendedor
+              <Button type="submit" className="w-full" disabled={isSubmitting}>
+                {isSubmitting ? "Cadastrando..." : "Cadastrar Vendedor"}
               </Button>
             </form>
           </CardContent>
