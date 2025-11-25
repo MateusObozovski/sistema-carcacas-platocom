@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
     )
 
     // Criar usuário no Supabase Auth
-    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+    const { data: authData, error: createUserError } = await supabaseAdmin.auth.admin.createUser({
       email,
       password,
       email_confirm: true,
@@ -127,9 +127,9 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    if (authError) {
-      console.error("[v0] Error creating user:", authError)
-      if (authError.message.includes("already registered")) {
+    if (createUserError) {
+      console.error("[v0] Error creating user:", createUserError)
+      if (createUserError.message.includes("already registered")) {
         return NextResponse.json({ error: "Este email já está cadastrado" }, { status: 409 })
       }
       return NextResponse.json({ error: "Erro ao criar usuário" }, { status: 500 })
@@ -141,13 +141,13 @@ export async function POST(request: NextRequest) {
 
     // O trigger no banco deve criar o profile automaticamente
     // Mas vamos verificar e criar se necessário
-    const { data: profile, error: profileError } = await supabaseAdmin
+    const { data: newUserProfile, error: newUserProfileError } = await supabaseAdmin
       .from("profiles")
       .select("*")
       .eq("id", authData.user.id)
       .maybeSingle()
 
-    if (profileError || !profile) {
+    if (newUserProfileError || !newUserProfile) {
       // Tentar criar o profile manualmente
       const { error: createProfileError } = await supabaseAdmin.from("profiles").insert({
         id: authData.user.id,
