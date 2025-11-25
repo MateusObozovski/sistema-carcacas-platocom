@@ -22,7 +22,7 @@ const jetbrainsMono = JetBrains_Mono({
 })
 
 export const metadata: Metadata = {
-  title: "Sistema de Carcaças",
+  title: "Platocom | Sistema de Carcaças",
   description: "Sistema de controle de débitos de carcaças",
   generator: "v0.app",
 }

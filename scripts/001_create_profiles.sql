@@ -3,7 +3,7 @@ create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   email text not null,
   nome text not null,
-  role text not null check (role in ('Patrão', 'Gerente', 'Coordenador', 'Vendedor')),
+  role text not null check (role in ('admin', 'Gerente', 'Coordenador', 'Vendedor')),
   ativo boolean default true,
   created_at timestamp with time zone default now(),
   updated_at timestamp with time zone default now()
@@ -17,7 +17,8 @@ alter table public.profiles enable row level security;
 drop policy if exists "Users can view their own profile" on public.profiles;
 drop policy if exists "Users can update their own profile" on public.profiles;
 drop policy if exists "Admins can view all profiles" on public.profiles;
-drop policy if exists "Patrão can insert profiles" on public.profiles;
+drop policy if exists "Admin can insert profiles" on public.profiles;
+drop policy if exists "Service role can do everything" on public.profiles;
 
 -- Users can view their own profile
 create policy "Users can view their own profile"
@@ -29,18 +30,18 @@ create policy "Users can update their own profile"
   on public.profiles for update
   using (auth.uid() = id);
 
--- Admin users (Patrão, Gerente) can view all profiles using JWT claims
+-- Admin users (admin, Gerente) can view all profiles using JWT claims
 create policy "Admins can view all profiles"
   on public.profiles for select
   using (
-    (auth.jwt()->>'role')::text in ('Patrão', 'Gerente')
+    (auth.jwt()->>'role')::text in ('admin', 'Gerente')
   );
 
--- Only Patrão can insert new profiles using JWT claims
-create policy "Patrão can insert profiles"
+-- Only admin can insert new profiles using JWT claims
+create policy "Admin can insert profiles"
   on public.profiles for insert
   with check (
-    (auth.jwt()->>'role')::text = 'Patrão'
+    (auth.jwt()->>'role')::text = 'admin'
   );
 
 -- Service role can do everything (for triggers and API)

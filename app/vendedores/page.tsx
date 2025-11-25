@@ -65,7 +65,7 @@ export default function VendedoresPage() {
 
   if (isLoading) {
     return (
-      <ProtectedRoute allowedRoles={["Patrão", "Gerente", "Coordenador"]}>
+      <ProtectedRoute allowedRoles={["admin", "Gerente", "Coordenador"]}>
         <div className="p-6">
           <div className="text-center text-muted-foreground">Carregando...</div>
         </div>
@@ -74,7 +74,7 @@ export default function VendedoresPage() {
   }
 
   return (
-    <ProtectedRoute allowedRoles={["Patrão", "Gerente", "Coordenador"]}>
+    <ProtectedRoute allowedRoles={["admin", "Gerente", "Coordenador"]}>
       <div className="p-6">
         <div className="space-y-6">
           <div>

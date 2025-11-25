@@ -15,6 +15,11 @@ create table if not exists public.clients (
 -- Enable RLS
 alter table public.clients enable row level security;
 
+-- Drop existing policies if they exist
+drop policy if exists "Vendedores can view their own clients" on public.clients;
+drop policy if exists "Vendedores can insert clients" on public.clients;
+drop policy if exists "Vendedores can update their own clients" on public.clients;
+
 -- Vendedores can only see their own clients
 create policy "Vendedores can view their own clients"
   on public.clients for select
@@ -23,7 +28,7 @@ create policy "Vendedores can view their own clients"
     or exists (
       select 1 from public.profiles
       where id = auth.uid()
-      and role in ('Patrão', 'Gerente', 'Coordenador')
+      and role in ('admin', 'Gerente', 'Coordenador')
     )
   );
 
@@ -40,7 +45,7 @@ create policy "Vendedores can update their own clients"
     or exists (
       select 1 from public.profiles
       where id = auth.uid()
-      and role in ('Patrão', 'Gerente', 'Coordenador')
+      and role in ('admin', 'Gerente', 'Coordenador')
     )
   );
 

@@ -164,7 +164,7 @@ export default function RelatoriosPage() {
 
   if (isLoading) {
     return (
-      <ProtectedRoute allowedRoles={["Patrão", "Gerente", "Coordenador"]}>
+      <ProtectedRoute allowedRoles={["admin", "Gerente", "Coordenador"]}>
         <div className="p-6">
           <div className="text-center text-muted-foreground">Carregando...</div>
         </div>
@@ -173,7 +173,7 @@ export default function RelatoriosPage() {
   }
 
   return (
-    <ProtectedRoute allowedRoles={["Patrão", "Gerente", "Coordenador"]}>
+    <ProtectedRoute allowedRoles={["admin", "Gerente", "Coordenador"]}>
       <div className="p-6">
         <div className="space-y-6">
           <div>

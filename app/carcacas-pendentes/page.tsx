@@ -96,7 +96,7 @@ export default function CarcacasPendentesPage() {
         setCarcacasPendentes(filtered)
 
         // Carregar vendedores (para admins)
-        if (user?.role === "Patrão" || user?.role === "Gerente" || user?.role === "Coordenador") {
+        if (user?.role === "admin" || user?.role === "Gerente" || user?.role === "Coordenador") {
           const { data: vendedoresData } = await supabase
             .from("profiles")
             .select("id, nome")
@@ -283,7 +283,7 @@ export default function CarcacasPendentesPage() {
                   className="pl-9"
                 />
               </div>
-              {(user?.role === "Patrão" || user?.role === "Gerente" || user?.role === "Coordenador") && (
+              {(user?.role === "admin" || user?.role === "Gerente" || user?.role === "Coordenador") && (
                 <Select value={vendedorFiltro} onValueChange={setVendedorFiltro}>
                   <SelectTrigger>
                     <SelectValue placeholder="Vendedor" />
@@ -336,7 +336,7 @@ export default function CarcacasPendentesPage() {
                 <TableRow>
                   <TableHead>Pedido</TableHead>
                   <TableHead>Cliente</TableHead>
-                  {(user?.role === "Patrão" || user?.role === "Gerente" || user?.role === "Coordenador") && (
+                  {(user?.role === "admin" || user?.role === "Gerente" || user?.role === "Coordenador") && (
                     <TableHead>Vendedor</TableHead>
                   )}
                   <TableHead>Produto</TableHead>
@@ -350,7 +350,7 @@ export default function CarcacasPendentesPage() {
                   <TableRow>
                     <TableCell
                       colSpan={
-                        user?.role === "Patrão" || user?.role === "Gerente" || user?.role === "Coordenador" ? 7 : 6
+                        user?.role === "admin" || user?.role === "Gerente" || user?.role === "Coordenador" ? 7 : 6
                       }
                       className="text-center text-muted-foreground"
                     >
@@ -369,7 +369,7 @@ export default function CarcacasPendentesPage() {
                           </Link>
                         </TableCell>
                         <TableCell>{item.orders?.clients?.nome}</TableCell>
-                        {(user?.role === "Patrão" || user?.role === "Gerente" || user?.role === "Coordenador") && (
+                        {(user?.role === "admin" || user?.role === "Gerente" || user?.role === "Coordenador") && (
                           <TableCell>{item.orders?.profiles?.nome}</TableCell>
                         )}
                         <TableCell>{item.produto_nome}</TableCell>

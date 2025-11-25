@@ -34,6 +34,13 @@ create table if not exists public.order_items (
 alter table public.orders enable row level security;
 alter table public.order_items enable row level security;
 
+-- Drop existing policies if they exist
+drop policy if exists "Vendedores can view their own orders" on public.orders;
+drop policy if exists "Vendedores can insert orders" on public.orders;
+drop policy if exists "Vendedores can update their own orders" on public.orders;
+drop policy if exists "Users can view order items for their orders" on public.order_items;
+drop policy if exists "Users can insert order items for their orders" on public.order_items;
+
 -- Vendedores can only see their own orders
 create policy "Vendedores can view their own orders"
   on public.orders for select
@@ -42,7 +49,7 @@ create policy "Vendedores can view their own orders"
     or exists (
       select 1 from public.profiles
       where id = auth.uid()
-      and role in ('Patrão', 'Gerente', 'Coordenador')
+      and role in ('admin', 'Gerente', 'Coordenador')
     )
   );
 
@@ -59,7 +66,7 @@ create policy "Vendedores can update their own orders"
     or exists (
       select 1 from public.profiles
       where id = auth.uid()
-      and role in ('Patrão', 'Gerente', 'Coordenador')
+      and role in ('admin', 'Gerente', 'Coordenador')
     )
   );
 
@@ -75,7 +82,7 @@ create policy "Users can view order items for their orders"
         or exists (
           select 1 from public.profiles
           where id = auth.uid()
-          and role in ('Patrão', 'Gerente', 'Coordenador')
+          and role in ('admin', 'Gerente', 'Coordenador')
         )
       )
     )

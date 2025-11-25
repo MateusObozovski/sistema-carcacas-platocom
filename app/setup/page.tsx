@@ -50,7 +50,7 @@ export default function SetupPage() {
               <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
                 <h3 className="font-semibold text-white mb-3">Usuários que serão criados:</h3>
                 <ul className="space-y-2 text-sm text-zinc-400">
-                  <li>• Patrão Admin (patrao@empresa.com) - senha: admin123</li>
+                  <li>• Admin (patrao@empresa.com) - senha: admin123</li>
                   <li>• Gerente Silva (gerente@empresa.com) - senha: gerente123</li>
                   <li>• Yago Vendedor (yago@empresa.com) - senha: yago123</li>
                   <li>• José Vendedor (jose@empresa.com) - senha: jose123</li>

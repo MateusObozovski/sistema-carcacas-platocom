@@ -71,7 +71,7 @@ export default function PedidosPage() {
   })
 
   return (
-    <ProtectedRoute allowedRoles={["Vendedor", "Coordenador", "Gerente", "Patrão"]}>
+    <ProtectedRoute allowedRoles={["Vendedor", "Coordenador", "Gerente", "admin"]}>
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
@@ -143,7 +143,7 @@ export default function PedidosPage() {
                     <TableHead className="text-right">Débito</TableHead>
                     <TableHead>Data</TableHead>
                     <TableHead>Status</TableHead>
-                    {(user?.role === "Patrão" || user?.role === "Gerente" || user?.role === "Coordenador") && (
+                    {(user?.role === "admin" || user?.role === "Gerente" || user?.role === "Coordenador") && (
                       <TableHead>Vendedor</TableHead>
                     )}
                   </TableRow>
@@ -173,7 +173,7 @@ export default function PedidosPage() {
                         <TableCell>
                           <StatusBadge status={pedido.status} />
                         </TableCell>
-                        {(user?.role === "Patrão" || user?.role === "Gerente" || user?.role === "Coordenador") && (
+                        {(user?.role === "admin" || user?.role === "Gerente" || user?.role === "Coordenador") && (
                           <TableCell>{pedido.profiles?.nome || "-"}</TableCell>
                         )}
                       </TableRow>

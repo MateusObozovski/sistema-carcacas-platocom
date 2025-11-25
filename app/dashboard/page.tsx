@@ -35,7 +35,7 @@ export default function DashboardPage() {
       try {
         setIsLoading(true)
 
-        if (user.role === "Patrão" || user.role === "Gerente" || user.role === "Coordenador") {
+        if (user.role === "admin" || user.role === "Gerente" || user.role === "Coordenador") {
           const [vendedoresData, ordersData, clientsData] = await Promise.all([
             getVendedores(),
             getOrders(),
@@ -94,8 +94,8 @@ export default function DashboardPage() {
     )
   }
 
-  // Patrão Dashboard
-  if (user?.role === "Patrão" || user?.role === "Gerente" || user?.role === "Coordenador") {
+  // Admin Dashboard
+  if (user?.role === "admin" || user?.role === "Gerente" || user?.role === "Coordenador") {
     console.log("[v0] Rendering admin dashboard for role:", user.role)
 
     const debitoTotal = vendedores.reduce((acc, v) => acc + v.debitoTotal, 0)
@@ -108,7 +108,7 @@ export default function DashboardPage() {
       .slice(0, 5)
 
     return (
-      <ProtectedRoute allowedRoles={["Patrão", "Gerente", "Coordenador"]}>
+      <ProtectedRoute allowedRoles={["admin", "Gerente", "Coordenador"]}>
         <div className="p-6">
           <div className="space-y-6">
             <div>

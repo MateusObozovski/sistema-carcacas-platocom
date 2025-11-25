@@ -49,10 +49,11 @@ export default function LoginPage() {
             <Image
               src="/logo.png"
               alt="PLATOCOM EMBREAGENS"
-              width={300}
-              height={150}
+              width={400}
+              height={200}
               className="object-contain"
               priority
+              unoptimized
             />
           </div>
           <div>
@@ -115,7 +116,7 @@ export default function LoginPage() {
             <div className="rounded-lg bg-muted p-4 text-sm">
               <p className="font-medium">Usuários de teste:</p>
               <div className="space-y-1 text-muted-foreground">
-                <p>Patrão: patrao@empresa.com / admin123</p>
+                <p>Admin: patrao@empresa.com / admin123</p>
                 <p>Gerente: gerente@empresa.com / gerente123</p>
                 <p>Yago: yago@empresa.com / yago123</p>
                 <p>José: jose@empresa.com / jose123</p>

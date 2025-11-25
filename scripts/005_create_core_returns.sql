@@ -13,6 +13,10 @@ create table if not exists public.core_returns (
 -- Enable RLS
 alter table public.core_returns enable row level security;
 
+-- Drop existing policies if they exist
+drop policy if exists "Vendedores can view their own returns" on public.core_returns;
+drop policy if exists "Vendedores can insert returns" on public.core_returns;
+
 -- Vendedores can view their own returns
 create policy "Vendedores can view their own returns"
   on public.core_returns for select
@@ -21,7 +25,7 @@ create policy "Vendedores can view their own returns"
     or exists (
       select 1 from public.profiles
       where id = auth.uid()
-      and role in ('Patrão', 'Gerente', 'Coordenador')
+      and role in ('admin', 'Gerente', 'Coordenador')
     )
   );
 

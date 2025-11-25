@@ -56,7 +56,7 @@ export default function ClientesPage() {
         setClientes(clientesData || [])
 
         // Fetch vendedores para mostrar no filtro e no formulário
-        if (user.role === "Patrão" || user.role === "Gerente" || user.role === "Coordenador") {
+        if (user.role === "admin" || user.role === "Gerente" || user.role === "Coordenador") {
           const vendedoresData = await getVendedores()
           setVendedores(vendedoresData || [])
         } else if (user.role === "Vendedor") {
@@ -172,7 +172,7 @@ export default function ClientesPage() {
   const debitoTotal = clientesFiltrados.reduce((acc, c) => acc + (c.debito || 0), 0)
 
   return (
-    <ProtectedRoute allowedRoles={["Vendedor", "Coordenador", "Gerente", "Patrão"]}>
+    <ProtectedRoute allowedRoles={["Vendedor", "Coordenador", "Gerente", "admin"]}>
       <div className="p-6">
         <div className="space-y-6">
           <div className="flex items-center justify-between">
@@ -224,7 +224,7 @@ export default function ClientesPage() {
                     className="pl-9"
                   />
                 </div>
-                {(user?.role === "Patrão" || user?.role === "Gerente" || user?.role === "Coordenador") && (
+                {(user?.role === "admin" || user?.role === "Gerente" || user?.role === "Coordenador") && (
                   <Select value={vendedorFiltro} onValueChange={setVendedorFiltro}>
                     <SelectTrigger>
                       <SelectValue placeholder="Vendedor" />
@@ -256,7 +256,7 @@ export default function ClientesPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Cliente</TableHead>
-                      {(user?.role === "Patrão" || user?.role === "Gerente" || user?.role === "Coordenador") && (
+                      {(user?.role === "admin" || user?.role === "Gerente" || user?.role === "Coordenador") && (
                         <TableHead>Vendedor</TableHead>
                       )}
                       <TableHead className="text-right">Débito</TableHead>
@@ -275,7 +275,7 @@ export default function ClientesPage() {
                       clientesFiltrados.map((cliente) => (
                         <TableRow key={cliente.id}>
                           <TableCell className="font-medium">{cliente.nome}</TableCell>
-                          {(user?.role === "Patrão" || user?.role === "Gerente" || user?.role === "Coordenador") && (
+                          {(user?.role === "admin" || user?.role === "Gerente" || user?.role === "Coordenador") && (
                             <TableCell>{cliente.profiles?.nome || "-"}</TableCell>
                           )}
                           <TableCell className="text-right">

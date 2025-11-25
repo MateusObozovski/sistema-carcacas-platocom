@@ -1,7 +1,9 @@
 import { createClient } from "@supabase/supabase-js"
-import { NextResponse } from "next/server"
+import { createServerClient } from "@supabase/ssr"
+import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { rateLimitByIP, rateLimitConfigs } from "@/lib/rate-limit"
+import { cookies } from "next/headers"
 
 // Helper para obter IP do request
 function getIP(request: Request): string {
@@ -15,11 +17,48 @@ const createUserSchema = z.object({
   name: z.string().min(2, "Nome deve ter pelo menos 2 caracteres").max(100).trim(),
   email: z.string().email("Email inválido").toLowerCase().trim(),
   password: z.string().min(6, "Senha deve ter no mínimo 6 caracteres").max(100),
-  role: z.enum(["Patrão", "Gerente", "Coordenador", "Vendedor"]),
+  role: z.enum(["admin", "Gerente", "Coordenador", "Vendedor"]),
 })
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
+    // Verificar autenticação e permissões
+    const cookieStore = await cookies()
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() {
+            return cookieStore.getAll()
+          },
+          setAll() {
+            // No-op em API routes
+          },
+        },
+      },
+    )
+
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser()
+
+    if (authError || !user) {
+      return NextResponse.json({ error: "Não autenticado" }, { status: 401 })
+    }
+
+    // Verificar se o usuário tem role admin
+    const { data: currentUserProfile, error: profileError } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single()
+
+    if (profileError || !currentUserProfile || currentUserProfile.role !== "admin") {
+      return NextResponse.json({ error: "Acesso negado. Apenas administradores podem criar usuários." }, { status: 403 })
+    }
+
     // Rate limiting
     const ip = getIP(request)
     const rateLimitResult = await rateLimitByIP(ip, rateLimitConfigs.createProfile)

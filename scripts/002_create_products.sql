@@ -19,6 +19,10 @@ create table if not exists public.products (
 -- Enable RLS
 alter table public.products enable row level security;
 
+-- Drop existing policies if they exist
+drop policy if exists "Anyone can view active products" on public.products;
+drop policy if exists "Admins can manage products" on public.products;
+
 -- Everyone can view active products
 create policy "Anyone can view active products"
   on public.products for select
@@ -31,7 +35,7 @@ create policy "Admins can manage products"
     exists (
       select 1 from public.profiles
       where id = auth.uid()
-      and role in ('Patrão', 'Gerente')
+      and role in ('admin', 'Gerente')
     )
   );
 

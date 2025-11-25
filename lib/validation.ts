@@ -9,7 +9,7 @@ export const createProfileSchema = z.object({
     .min(2, "Nome deve ter pelo menos 2 caracteres")
     .max(100, "Nome deve ter no máximo 100 caracteres")
     .trim(),
-  role: z.enum(["Patrão", "Gerente", "Coordenador", "Vendedor"], {
+  role: z.enum(["admin", "Gerente", "Coordenador", "Vendedor"], {
     errorMap: () => ({ message: "Role inválida" }),
   }),
 })

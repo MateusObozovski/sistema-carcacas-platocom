@@ -183,7 +183,7 @@ export default function ProdutosPage() {
 
   if (loading) {
     return (
-      <ProtectedRoute allowedRoles={["Patrão", "Gerente", "Coordenador", "Vendedor"]}>
+      <ProtectedRoute allowedRoles={["admin", "Gerente", "Coordenador", "Vendedor"]}>
         <main className="p-4 md:p-6">
           <div className="text-center py-8">Carregando produtos...</div>
         </main>
@@ -192,7 +192,7 @@ export default function ProdutosPage() {
   }
 
   return (
-    <ProtectedRoute allowedRoles={["Patrão", "Gerente", "Coordenador", "Vendedor"]}>
+    <ProtectedRoute allowedRoles={["admin", "Gerente", "Coordenador", "Vendedor"]}>
       <main className="p-4 md:p-6">
         <div className="mb-4 md:mb-6">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">

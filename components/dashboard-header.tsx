@@ -28,7 +28,7 @@ export function DashboardHeader({ onMenuClick }: DashboardHeaderProps) {
 
   const getRoleLabel = (role: string) => {
     const labels: Record<string, string> = {
-      patrao: "Patrão",
+      admin: "Admin",
       gerente: "Gerente",
       coordenador: "Coordenador",
       vendedor: "Vendedor",

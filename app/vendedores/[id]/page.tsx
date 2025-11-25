@@ -80,7 +80,7 @@ export default function VendedorDetalhePage() {
 
   if (isLoading) {
     return (
-      <ProtectedRoute allowedRoles={["Patrão", "Gerente", "Coordenador"]}>
+      <ProtectedRoute allowedRoles={["admin", "Gerente", "Coordenador"]}>
         <div className="flex min-h-screen flex-col">
           <DashboardHeader />
           <div className="flex flex-1">
@@ -96,7 +96,7 @@ export default function VendedorDetalhePage() {
 
   if (!vendedor) {
     return (
-      <ProtectedRoute allowedRoles={["Patrão", "Gerente", "Coordenador"]}>
+      <ProtectedRoute allowedRoles={["admin", "Gerente", "Coordenador"]}>
         <div className="flex min-h-screen flex-col">
           <DashboardHeader />
           <div className="flex flex-1">
@@ -116,7 +116,7 @@ export default function VendedorDetalhePage() {
   }
 
   return (
-    <ProtectedRoute allowedRoles={["Patrão", "Gerente", "Coordenador"]}>
+    <ProtectedRoute allowedRoles={["admin", "Gerente", "Coordenador"]}>
       <div className="flex min-h-screen flex-col">
         <DashboardHeader />
         <div className="flex flex-1">

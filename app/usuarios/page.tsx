@@ -1,18 +1,21 @@
 "use client"
 
+import type React from "react"
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { ProtectedRoute } from "@/components/protected-route"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Search, Trash2, Lock } from "lucide-react"
+import { Plus, Search, Trash2, Lock, X } from "lucide-react"
 import type { UserRole } from "@/lib/types"
 import { getUsers, type DatabaseUser } from "@/lib/supabase/database"
 import { useAuth } from "@/lib/auth-context"
 import { useToast } from "@/hooks/use-toast"
 import { createClient } from "@/lib/supabase/client"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Label } from "@/components/ui/label"
 
 export default function UsuariosPage() {
   const router = useRouter()
@@ -22,13 +25,25 @@ export default function UsuariosPage() {
   const [users, setUsers] = useState<DatabaseUser[]>([])
   const [searchTerm, setSearchTerm] = useState("")
   const [isLoading, setIsLoading] = useState(true)
+  const [showCreateDialog, setShowCreateDialog] = useState(false)
+  const [isCreating, setIsCreating] = useState(false)
+  const [newUserForm, setNewUserForm] = useState({
+    name: "",
+    email: "",
+    password: "",
+    role: "Vendedor" as UserRole,
+  })
 
   useEffect(() => {
     const loadUsers = async () => {
       try {
         setIsLoading(true)
+        if (!currentUser) {
+          setIsLoading(false)
+          return
+        }
         const usersData = await getUsers()
-        setUsers(usersData)
+        setUsers(usersData || [])
       } catch (error) {
         console.error("[v0] Error loading users:", error)
         toast({
@@ -36,13 +51,14 @@ export default function UsuariosPage() {
           description: "Não foi possível carregar os usuários",
           variant: "destructive",
         })
+        setUsers([])
       } finally {
         setIsLoading(false)
       }
     }
 
     loadUsers()
-  }, [toast])
+  }, [currentUser, toast])
 
   const filteredUsers = users.filter(
     (user) =>
@@ -111,9 +127,63 @@ export default function UsuariosPage() {
     }
   }
 
+  const handleCreateUser = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsCreating(true)
+
+    try {
+      const response = await fetch("/api/create-user", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(newUserForm),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        toast({
+          title: "Erro",
+          description: data.error || "Não foi possível criar o usuário",
+          variant: "destructive",
+        })
+        setIsCreating(false)
+        return
+      }
+
+      toast({
+        title: "Sucesso",
+        description: "Usuário criado com sucesso!",
+      })
+
+      // Recarregar lista de usuários
+      const usersData = await getUsers()
+      setUsers(usersData || [])
+
+      // Limpar formulário e fechar dialog
+      setNewUserForm({
+        name: "",
+        email: "",
+        password: "",
+        role: "Vendedor",
+      })
+      setShowCreateDialog(false)
+    } catch (error: any) {
+      console.error("[v0] Error creating user:", error)
+      toast({
+        title: "Erro",
+        description: "Não foi possível criar o usuário",
+        variant: "destructive",
+      })
+    } finally {
+      setIsCreating(false)
+    }
+  }
+
   const getRoleBadge = (role: UserRole) => {
     const variants: Record<UserRole, { label: string; variant: "default" | "secondary" | "outline" }> = {
-      Patrão: { label: "Patrão", variant: "default" },
+      admin: { label: "Admin", variant: "default" },
       Gerente: { label: "Gerente", variant: "default" },
       Coordenador: { label: "Coordenador", variant: "secondary" },
       Vendedor: { label: "Vendedor", variant: "outline" },
@@ -123,7 +193,7 @@ export default function UsuariosPage() {
 
   if (isLoading) {
     return (
-      <ProtectedRoute allowedRoles={["Patrão"]}>
+      <ProtectedRoute allowedRoles={["admin"]}>
         <main className="p-6">
           <div className="text-center text-muted-foreground">Carregando...</div>
         </main>
@@ -132,14 +202,14 @@ export default function UsuariosPage() {
   }
 
   return (
-    <ProtectedRoute allowedRoles={["Patrão"]}>
+    <ProtectedRoute allowedRoles={["admin"]}>
       <main className="p-6">
         <div className="mb-6 flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold text-foreground">Gestão de Usuários</h1>
             <p className="text-muted-foreground">Controle de acessos e permissões do sistema</p>
           </div>
-          <Button onClick={() => router.push("/cadastrar-vendedor")} className="gap-2">
+          <Button onClick={() => setShowCreateDialog(true)} className="gap-2">
             <Plus className="h-4 w-4" />
             Novo Usuário
           </Button>
@@ -222,7 +292,7 @@ export default function UsuariosPage() {
               <h3 className="mb-3 text-sm font-medium">Níveis de Acesso do Sistema:</h3>
               <div className="grid gap-3 md:grid-cols-2">
                 <div>
-                  <p className="text-sm font-medium text-foreground">Patrão (Admin)</p>
+                  <p className="text-sm font-medium text-foreground">Admin</p>
                   <p className="text-xs text-muted-foreground">
                     Acesso total: gestão de usuários, produtos, relatórios e todas as funcionalidades
                   </p>
@@ -245,6 +315,100 @@ export default function UsuariosPage() {
             </div>
           </CardContent>
         </Card>
+
+        {showCreateDialog && (
+          <Card className="mt-6">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Cadastrar Novo Usuário</CardTitle>
+                  <CardDescription>Preencha os dados do novo usuário do sistema</CardDescription>
+                </div>
+                <Button variant="ghost" size="icon" onClick={() => setShowCreateDialog(false)}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleCreateUser} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="newUserName">Nome Completo</Label>
+                  <Input
+                    id="newUserName"
+                    value={newUserForm.name}
+                    onChange={(e) => setNewUserForm({ ...newUserForm, name: e.target.value })}
+                    required
+                    minLength={2}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="newUserEmail">Email</Label>
+                  <Input
+                    id="newUserEmail"
+                    type="email"
+                    value={newUserForm.email}
+                    onChange={(e) => setNewUserForm({ ...newUserForm, email: e.target.value })}
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="newUserPassword">Senha</Label>
+                  <Input
+                    id="newUserPassword"
+                    type="password"
+                    value={newUserForm.password}
+                    onChange={(e) => setNewUserForm({ ...newUserForm, password: e.target.value })}
+                    required
+                    minLength={6}
+                  />
+                  <p className="text-xs text-muted-foreground">Mínimo de 6 caracteres</p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="newUserRole">Nível de Acesso</Label>
+                  <Select
+                    value={newUserForm.role}
+                    onValueChange={(value: UserRole) => setNewUserForm({ ...newUserForm, role: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Vendedor">Vendedor</SelectItem>
+                      <SelectItem value="Coordenador">Coordenador</SelectItem>
+                      <SelectItem value="Gerente">Gerente</SelectItem>
+                      <SelectItem value="admin">Admin</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="flex gap-3 justify-end">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setShowCreateDialog(false)
+                      setNewUserForm({
+                        name: "",
+                        email: "",
+                        password: "",
+                        role: "Vendedor",
+                      })
+                    }}
+                    disabled={isCreating}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button type="submit" disabled={isCreating}>
+                    {isCreating ? "Criando..." : "Criar Usuário"}
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        )}
       </main>
     </ProtectedRoute>
   )

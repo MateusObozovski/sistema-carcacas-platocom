@@ -54,8 +54,8 @@ export async function POST(request: Request) {
         email: "patrao@empresa.com",
         password: "admin123",
         user_metadata: {
-          nome: "Patrão Admin",
-          role: "Patrão",
+          nome: "Admin",
+          role: "admin",
         },
       },
       {
