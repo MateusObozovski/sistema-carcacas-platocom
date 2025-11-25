@@ -7,8 +7,10 @@ import { CheckCircle2, XCircle, Loader2 } from "lucide-react"
 
 export default function SetupPage() {
   const [loading, setLoading] = useState(false)
+  const [updatingRoles, setUpdatingRoles] = useState(false)
   const [results, setResults] = useState<any[]>([])
   const [completed, setCompleted] = useState(false)
+  const [rolesUpdated, setRolesUpdated] = useState(false)
 
   const handleSetup = async () => {
     setLoading(true)
@@ -34,6 +36,36 @@ export default function SetupPage() {
     }
   }
 
+  const handleUpdateRoles = async () => {
+    setUpdatingRoles(true)
+
+    try {
+      const response = await fetch("/api/update-roles", {
+        method: "POST",
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        setRolesUpdated(true)
+        alert(`Roles atualizados com sucesso! ${data.updated} perfil(is) atualizado(s).`)
+      } else {
+        let errorMessage = "Erro ao atualizar roles: " + data.error + "\n\n"
+        if (data.instructions) {
+          errorMessage += "Instruções:\n" + data.instructions
+        }
+        if (data.sql_script) {
+          errorMessage += `\n\nExecute o script: ${data.sql_script}`
+        }
+        alert(errorMessage)
+      }
+    } catch (error: any) {
+      alert("Erro: " + error.message)
+    } finally {
+      setUpdatingRoles(false)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-black flex items-center justify-center p-4">
       <Card className="w-full max-w-2xl bg-zinc-950 border-zinc-800 p-8">
@@ -47,6 +79,31 @@ export default function SetupPage() {
 
           {!completed && (
             <div className="space-y-4">
+              <div className="bg-yellow-950 border border-yellow-800 rounded-lg p-4">
+                <h3 className="font-semibold text-yellow-400 mb-2">⚠️ Atualização de Roles</h3>
+                <p className="text-yellow-300 text-sm mb-3">
+                  Se você já tem usuários criados com role "Patrão", clique no botão abaixo para atualizar para "admin".
+                </p>
+                <Button
+                  onClick={handleUpdateRoles}
+                  disabled={updatingRoles || rolesUpdated}
+                  variant="outline"
+                  className="w-full border-yellow-700 text-yellow-400 hover:bg-yellow-900"
+                  size="sm"
+                >
+                  {updatingRoles ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Atualizando...
+                    </>
+                  ) : rolesUpdated ? (
+                    "✓ Roles Atualizados"
+                  ) : (
+                    "Atualizar Roles (Patrão → admin)"
+                  )}
+                </Button>
+              </div>
+
               <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
                 <h3 className="font-semibold text-white mb-3">Usuários que serão criados:</h3>
                 <ul className="space-y-2 text-sm text-zinc-400">
