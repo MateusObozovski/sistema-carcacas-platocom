@@ -1,7 +1,7 @@
 "use client"
 
 import { createContext, useContext, useState, useEffect, useRef, type ReactNode } from "react"
-import type { User } from "./types"
+import type { User, UserRole } from "./types"
 import { createClient } from "./supabase/client"
 
 interface AuthContextType {
@@ -47,8 +47,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return null
       }
 
-      console.log("[v0] Profile created successfully via API")
-      return result.profile
+      console.log("[v0] Profile created successfully via API:", result.profile)
+      // Garantir que retornamos o profile completo
+      if (result.profile) {
+        return {
+          id: result.profile.id,
+          email: result.profile.email || email,
+          nome: result.profile.nome || name,
+          role: result.profile.role || role,
+        }
+      }
+      return null
     } catch (error) {
       console.error("[v0] API call failed:", error)
       return null
@@ -76,15 +85,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             .maybeSingle()
 
           if (profile) {
+            const userRole = profile.role as UserRole
             setUser({
               id: profile.id,
               name: profile.nome,
               email: profile.email,
-              role: profile.role,
+              role: userRole,
             })
-            console.log("[v0] User profile loaded:", profile.role)
+            console.log("[v0] User profile loaded - role:", userRole, "profile.role:", profile.role)
           } else if (profileError) {
             console.error("[v0] Profile fetch error:", profileError.message)
+          } else {
+            console.warn("[v0] No profile found for user:", session.user.id)
           }
         }
       } catch (error) {
@@ -110,13 +122,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const { data: profile } = await supabase.from("profiles").select("*").eq("id", session.user.id).maybeSingle()
 
         if (profile) {
+          const userRole = profile.role as UserRole
           setUser({
             id: profile.id,
             name: profile.nome,
             email: profile.email,
-            role: profile.role,
+            role: userRole,
           })
-          console.log("[v0] User profile updated:", profile.role)
+          console.log("[v0] User profile updated - role:", userRole, "profile.role:", profile.role)
+        } else {
+          console.warn("[v0] No profile found after SIGNED_IN event")
         }
       }
     })
@@ -141,7 +156,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (data.user) {
-        console.log("[v0] Login successful, fetching profile...")
+        console.log("[v0] Login successful, user ID:", data.user.id, "email:", data.user.email)
+        console.log("[v0] Fetching profile...")
+        
         const { data: profile, error: profileError } = await supabase
           .from("profiles")
           .select("*")
@@ -149,21 +166,71 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .maybeSingle()
 
         if (profileError) {
-          console.error("[v0] Profile fetch error:", profileError.message)
+          console.error("[v0] Profile fetch error:", profileError)
+          console.error("[v0] Error code:", profileError.code)
+          console.error("[v0] Error message:", profileError.message)
+          console.error("[v0] Error details:", JSON.stringify(profileError, null, 2))
+          
+          // Tentar criar profile automaticamente se não existir
+          console.log("[v0] Attempting to create profile via API...")
+          const createdProfile = await createProfileViaAPI(
+            data.user.id,
+            data.user.email || "",
+            data.user.user_metadata?.nome || data.user.email?.split("@")[0] || "Usuário",
+            data.user.user_metadata?.role || "Vendedor"
+          )
+          
+          if (createdProfile) {
+            const userRole = createdProfile.role as UserRole
+            setUser({
+              id: createdProfile.id,
+              name: createdProfile.nome,
+              email: createdProfile.email,
+              role: userRole,
+            })
+            console.log("[v0] Profile created and login complete - role:", userRole)
+            return true
+          }
+          
           return false
         }
 
         if (profile) {
+          const userRole = profile.role as UserRole
           setUser({
             id: profile.id,
             name: profile.nome,
             email: profile.email,
-            role: profile.role,
+            role: userRole,
           })
-          console.log("[v0] Login complete, user role:", profile.role)
+          console.log("[v0] Login complete - role:", userRole, "profile.role:", profile.role)
           return true
         } else {
-          console.error("[v0] No profile found for user")
+          console.error("[v0] No profile found for user ID:", data.user.id)
+          console.log("[v0] User metadata:", data.user.user_metadata)
+          
+          // Tentar criar profile automaticamente
+          console.log("[v0] Attempting to create profile via API...")
+          const createdProfile = await createProfileViaAPI(
+            data.user.id,
+            data.user.email || "",
+            data.user.user_metadata?.nome || data.user.email?.split("@")[0] || "Usuário",
+            data.user.user_metadata?.role || "Vendedor"
+          )
+          
+          if (createdProfile) {
+            const userRole = createdProfile.role as UserRole
+            setUser({
+              id: createdProfile.id,
+              name: createdProfile.nome,
+              email: createdProfile.email,
+              role: userRole,
+            })
+            console.log("[v0] Profile created and login complete - role:", userRole)
+            return true
+          }
+          
+          console.error("[v0] Failed to create profile, login aborted")
           return false
         }
       }

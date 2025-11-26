@@ -20,7 +20,7 @@ import {
 
 interface DashboardNavProps {
   isOpen: boolean
-  onClose: () => void
+  onClose?: () => void
 }
 
 export function DashboardNav({ isOpen, onClose }: DashboardNavProps) {
@@ -30,7 +30,7 @@ export function DashboardNav({ isOpen, onClose }: DashboardNavProps) {
 
   // Fecha o menu quando a rota mudar (só no mobile)
   useEffect(() => {
-    if (pathname) {
+    if (pathname && onClose) {
       onClose()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -74,12 +74,6 @@ export function DashboardNav({ isOpen, onClose }: DashboardNavProps) {
       roles: ["admin", "Gerente", "Coordenador", "Vendedor"],
     },
     {
-      title: "Registrar Devolução",
-      href: "/registrar-devolucao",
-      icon: Package,
-      roles: ["admin", "Gerente", "Coordenador", "Vendedor"],
-    },
-    {
       title: "Relatórios",
       href: "/relatorios",
       icon: BarChart3,
@@ -111,7 +105,17 @@ export function DashboardNav({ isOpen, onClose }: DashboardNavProps) {
     },
   ]
 
-  const filteredNavItems = navItems.filter((item) => user && item.roles.includes(user.role))
+  const filteredNavItems = navItems.filter((item) => {
+    if (!user) {
+      console.warn("[v0] DashboardNav - No user found")
+      return false
+    }
+    const hasAccess = item.roles.includes(user.role)
+    if (!hasAccess && user.role === "admin") {
+      console.error(`[v0] DashboardNav - Admin user cannot access ${item.title}. User role: ${user.role}, Required roles: ${JSON.stringify(item.roles)}`)
+    }
+    return hasAccess
+  })
 
   const handleNavClick = (href: string) => {
     router.push(href)
@@ -123,7 +127,7 @@ export function DashboardNav({ isOpen, onClose }: DashboardNavProps) {
       {isOpen && (
         <div
           className="fixed inset-0 z-40 bg-black/50 lg:hidden"
-          onClick={onClose}
+          onClick={() => onClose?.()}
           aria-hidden="true"
         />
       )}

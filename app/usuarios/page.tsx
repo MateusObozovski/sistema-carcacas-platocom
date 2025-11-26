@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Search, Trash2, Lock, X } from "lucide-react"
+import { Plus, Search, Edit2 } from "lucide-react"
 import type { UserRole } from "@/lib/types"
 import { getUsers, type DatabaseUser } from "@/lib/supabase/database"
 import { useAuth } from "@/lib/auth-context"
@@ -16,6 +16,15 @@ import { useToast } from "@/hooks/use-toast"
 import { createClient } from "@/lib/supabase/client"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 
 export default function UsuariosPage() {
   const router = useRouter()
@@ -27,6 +36,14 @@ export default function UsuariosPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [isCreating, setIsCreating] = useState(false)
+  const [showEditDialog, setShowEditDialog] = useState(false)
+  const [editingUser, setEditingUser] = useState<DatabaseUser | null>(null)
+  const [editForm, setEditForm] = useState({
+    name: "",
+    password: "",
+  })
+  const [isUpdating, setIsUpdating] = useState(false)
+  const [togglingUsers, setTogglingUsers] = useState<Set<string>>(new Set())
   const [newUserForm, setNewUserForm] = useState({
     name: "",
     email: "",
@@ -34,31 +51,34 @@ export default function UsuariosPage() {
     role: "Vendedor" as UserRole,
   })
 
-  useEffect(() => {
-    const loadUsers = async () => {
-      try {
-        setIsLoading(true)
-        if (!currentUser) {
-          setIsLoading(false)
-          return
-        }
-        const usersData = await getUsers()
-        setUsers(usersData || [])
-      } catch (error) {
-        console.error("[v0] Error loading users:", error)
-        toast({
-          title: "Erro",
-          description: "Não foi possível carregar os usuários",
-          variant: "destructive",
-        })
-        setUsers([])
-      } finally {
+  const loadUsers = async () => {
+    try {
+      setIsLoading(true)
+      if (!currentUser) {
         setIsLoading(false)
+        return
       }
+      console.log("[v0] Loading users...")
+      const usersData = await getUsers()
+      console.log("[v0] Users loaded:", usersData?.length, usersData)
+      setUsers(usersData || [])
+    } catch (error) {
+      console.error("[v0] Error loading users:", error)
+      toast({
+        title: "Erro",
+        description: "Não foi possível carregar os usuários",
+        variant: "destructive",
+      })
+      setUsers([])
+    } finally {
+      setIsLoading(false)
     }
+  }
 
+  useEffect(() => {
     loadUsers()
-  }, [currentUser, toast])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser])
 
   const filteredUsers = users.filter(
     (user) =>
@@ -66,41 +86,21 @@ export default function UsuariosPage() {
       user.email.toLowerCase().includes(searchTerm.toLowerCase()),
   )
 
-  const handleDelete = async (userId: string) => {
-    if (userId === currentUser?.id) {
-      toast({
-        title: "Erro",
-        description: "Você não pode excluir seu próprio usuário!",
-        variant: "destructive",
-      })
-      return
-    }
-
-    if (!confirm("Tem certeza que deseja excluir este usuário?")) return
-
-    try {
-      // Delete user from Supabase Auth (requires admin privileges)
-      // Note: This would typically be done via an API route with service role
-      toast({
-        title: "Atenção",
-        description: "A exclusão de usuários deve ser feita pelo painel do Supabase ou via API com privilégios de administrador.",
-        variant: "default",
-      })
-    } catch (error) {
-      console.error("[v0] Error deleting user:", error)
-      toast({
-        title: "Erro",
-        description: "Não foi possível excluir o usuário",
-        variant: "destructive",
-      })
-    }
+  const handleEditClick = (user: DatabaseUser) => {
+    setEditingUser(user)
+    setEditForm({
+      name: user.nome,
+      password: "",
+    })
+    setShowEditDialog(true)
   }
 
-  const handleResetPassword = async (userId: string, email: string) => {
-    const newPassword = prompt("Digite a nova senha (mínimo 6 caracteres):")
-    if (!newPassword) return
+  const handleEditUser = async (e: React.FormEvent) => {
+    e.preventDefault()
 
-    if (newPassword.length < 6) {
+    if (!editingUser) return
+
+    if (editForm.password && editForm.password.length < 6) {
       toast({
         title: "Erro",
         description: "A senha deve ter no mínimo 6 caracteres!",
@@ -109,20 +109,122 @@ export default function UsuariosPage() {
       return
     }
 
+    setIsUpdating(true)
+
     try {
-      // Reset password via Supabase Auth Admin API
-      // Note: This would typically be done via an API route with service role
-      toast({
-        title: "Atenção",
-        description: "O reset de senha deve ser feito pelo painel do Supabase ou via API com privilégios de administrador.",
-        variant: "default",
+      const updateData: { userId: string; name?: string; password?: string } = {
+        userId: editingUser.id,
+      }
+
+      if (editForm.name !== editingUser.nome) {
+        updateData.name = editForm.name
+      }
+
+      if (editForm.password) {
+        updateData.password = editForm.password
+      }
+
+      const response = await fetch("/api/update-user", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(updateData),
       })
-    } catch (error) {
-      console.error("[v0] Error resetting password:", error)
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        toast({
+          title: "Erro",
+          description: data.error || "Não foi possível atualizar o usuário",
+          variant: "destructive",
+        })
+        setIsUpdating(false)
+        return
+      }
+
+      toast({
+        title: "Sucesso",
+        description: "Usuário atualizado com sucesso!",
+      })
+
+      // Fechar modal e recarregar lista
+      setShowEditDialog(false)
+      setEditingUser(null)
+      setEditForm({ name: "", password: "" })
+
+      setTimeout(() => {
+        loadUsers()
+      }, 500)
+    } catch (error: any) {
+      console.error("[v0] Error updating user:", error)
       toast({
         title: "Erro",
-        description: "Não foi possível resetar a senha",
+        description: "Não foi possível atualizar o usuário",
         variant: "destructive",
+      })
+    } finally {
+      setIsUpdating(false)
+    }
+  }
+
+  const handleToggleActive = async (user: DatabaseUser) => {
+    if (user.id === currentUser?.id) {
+      toast({
+        title: "Erro",
+        description: "Você não pode desativar seu próprio usuário!",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setTogglingUsers((prev) => new Set(prev).add(user.id))
+
+    try {
+      const response = await fetch("/api/update-user", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          userId: user.id,
+          ativo: !user.ativo,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        toast({
+          title: "Erro",
+          description: data.error || "Não foi possível atualizar o status do usuário",
+          variant: "destructive",
+        })
+        return
+      }
+
+      toast({
+        title: "Sucesso",
+        description: `Usuário ${!user.ativo ? "ativado" : "desativado"} com sucesso!`,
+      })
+
+      // Recarregar lista
+      setTimeout(() => {
+        loadUsers()
+      }, 500)
+    } catch (error: any) {
+      console.error("[v0] Error toggling user active status:", error)
+      toast({
+        title: "Erro",
+        description: "Não foi possível atualizar o status do usuário",
+        variant: "destructive",
+      })
+    } finally {
+      setTogglingUsers((prev) => {
+        const newSet = new Set(prev)
+        newSet.delete(user.id)
+        return newSet
       })
     }
   }
@@ -157,10 +259,6 @@ export default function UsuariosPage() {
         description: "Usuário criado com sucesso!",
       })
 
-      // Recarregar lista de usuários
-      const usersData = await getUsers()
-      setUsers(usersData || [])
-
       // Limpar formulário e fechar dialog
       setNewUserForm({
         name: "",
@@ -169,6 +267,11 @@ export default function UsuariosPage() {
         role: "Vendedor",
       })
       setShowCreateDialog(false)
+
+      // Recarregar lista de usuários após um pequeno delay para garantir que o banco foi atualizado
+      setTimeout(() => {
+        loadUsers()
+      }, 1000)
     } catch (error: any) {
       console.error("[v0] Error creating user:", error)
       toast({
@@ -238,19 +341,21 @@ export default function UsuariosPage() {
                     <th className="pb-3 text-left text-sm font-medium text-muted-foreground">Nome</th>
                     <th className="pb-3 text-left text-sm font-medium text-muted-foreground">Email</th>
                     <th className="pb-3 text-left text-sm font-medium text-muted-foreground">Nível de Acesso</th>
+                    <th className="pb-3 text-left text-sm font-medium text-muted-foreground">Status</th>
                     <th className="pb-3 text-left text-sm font-medium text-muted-foreground">Ações</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredUsers.length === 0 ? (
                     <tr>
-                      <td colSpan={4} className="py-4 text-center text-muted-foreground">
+                      <td colSpan={5} className="py-4 text-center text-muted-foreground">
                         Nenhum usuário encontrado
                       </td>
                     </tr>
                   ) : (
                     filteredUsers.map((user) => {
                       const roleBadge = getRoleBadge(user.role as UserRole)
+                      const isToggling = togglingUsers.has(user.id)
                       return (
                         <tr key={user.id} className="border-b border-border">
                           <td className="py-4 text-sm font-medium text-foreground">{user.nome}</td>
@@ -259,26 +364,26 @@ export default function UsuariosPage() {
                             <Badge variant={roleBadge.variant}>{roleBadge.label}</Badge>
                           </td>
                           <td className="py-4">
-                            <div className="flex gap-2">
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => handleResetPassword(user.id, user.email)}
-                                title="Resetar senha"
-                              >
-                                <Lock className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="text-destructive"
-                                onClick={() => handleDelete(user.id)}
-                                disabled={user.id === currentUser?.id}
-                                title="Excluir usuário"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
+                            <div className="flex items-center gap-2">
+                              <Switch
+                                checked={user.ativo}
+                                onCheckedChange={() => handleToggleActive(user)}
+                                disabled={isToggling || user.id === currentUser?.id}
+                              />
+                              <span className="text-xs text-muted-foreground">
+                                {user.ativo ? "Ativo" : "Inativo"}
+                              </span>
                             </div>
+                          </td>
+                          <td className="py-4">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleEditClick(user)}
+                              title="Editar usuário"
+                            >
+                              <Edit2 className="h-4 w-4" />
+                            </Button>
                           </td>
                         </tr>
                       )
@@ -316,99 +421,152 @@ export default function UsuariosPage() {
           </CardContent>
         </Card>
 
-        {showCreateDialog && (
-          <Card className="mt-6">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>Cadastrar Novo Usuário</CardTitle>
-                  <CardDescription>Preencha os dados do novo usuário do sistema</CardDescription>
-                </div>
-                <Button variant="ghost" size="icon" onClick={() => setShowCreateDialog(false)}>
-                  <X className="h-4 w-4" />
-                </Button>
+        <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+          <DialogContent className="sm:max-w-[500px]">
+            <DialogHeader>
+              <DialogTitle>Cadastrar Novo Usuário</DialogTitle>
+              <DialogDescription>Preencha os dados do novo usuário do sistema</DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleCreateUser} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="newUserName">Nome Completo</Label>
+                <Input
+                  id="newUserName"
+                  value={newUserForm.name}
+                  onChange={(e) => setNewUserForm({ ...newUserForm, name: e.target.value })}
+                  required
+                  minLength={2}
+                  disabled={isCreating}
+                />
               </div>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleCreateUser} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="newUserName">Nome Completo</Label>
-                  <Input
-                    id="newUserName"
-                    value={newUserForm.name}
-                    onChange={(e) => setNewUserForm({ ...newUserForm, name: e.target.value })}
-                    required
-                    minLength={2}
-                  />
-                </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="newUserEmail">Email</Label>
-                  <Input
-                    id="newUserEmail"
-                    type="email"
-                    value={newUserForm.email}
-                    onChange={(e) => setNewUserForm({ ...newUserForm, email: e.target.value })}
-                    required
-                  />
-                </div>
+              <div className="space-y-2">
+                <Label htmlFor="newUserEmail">Email</Label>
+                <Input
+                  id="newUserEmail"
+                  type="email"
+                  value={newUserForm.email}
+                  onChange={(e) => setNewUserForm({ ...newUserForm, email: e.target.value })}
+                  required
+                  disabled={isCreating}
+                />
+              </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="newUserPassword">Senha</Label>
-                  <Input
-                    id="newUserPassword"
-                    type="password"
-                    value={newUserForm.password}
-                    onChange={(e) => setNewUserForm({ ...newUserForm, password: e.target.value })}
-                    required
-                    minLength={6}
-                  />
-                  <p className="text-xs text-muted-foreground">Mínimo de 6 caracteres</p>
-                </div>
+              <div className="space-y-2">
+                <Label htmlFor="newUserPassword">Senha</Label>
+                <Input
+                  id="newUserPassword"
+                  type="password"
+                  value={newUserForm.password}
+                  onChange={(e) => setNewUserForm({ ...newUserForm, password: e.target.value })}
+                  required
+                  minLength={6}
+                  disabled={isCreating}
+                />
+                <p className="text-xs text-muted-foreground">Mínimo de 6 caracteres</p>
+              </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="newUserRole">Nível de Acesso</Label>
-                  <Select
-                    value={newUserForm.role}
-                    onValueChange={(value: UserRole) => setNewUserForm({ ...newUserForm, role: value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Vendedor">Vendedor</SelectItem>
-                      <SelectItem value="Coordenador">Coordenador</SelectItem>
-                      <SelectItem value="Gerente">Gerente</SelectItem>
-                      <SelectItem value="admin">Admin</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+              <div className="space-y-2">
+                <Label htmlFor="newUserRole">Nível de Acesso</Label>
+                <Select
+                  value={newUserForm.role}
+                  onValueChange={(value: UserRole) => setNewUserForm({ ...newUserForm, role: value })}
+                  disabled={isCreating}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Vendedor">Vendedor</SelectItem>
+                    <SelectItem value="Coordenador">Coordenador</SelectItem>
+                    <SelectItem value="Gerente">Gerente</SelectItem>
+                    <SelectItem value="admin">Admin</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
-                <div className="flex gap-3 justify-end">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => {
-                      setShowCreateDialog(false)
-                      setNewUserForm({
-                        name: "",
-                        email: "",
-                        password: "",
-                        role: "Vendedor",
-                      })
-                    }}
-                    disabled={isCreating}
-                  >
-                    Cancelar
-                  </Button>
-                  <Button type="submit" disabled={isCreating}>
-                    {isCreating ? "Criando..." : "Criar Usuário"}
-                  </Button>
-                </div>
-              </form>
-            </CardContent>
-          </Card>
-        )}
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setShowCreateDialog(false)
+                    setNewUserForm({
+                      name: "",
+                      email: "",
+                      password: "",
+                      role: "Vendedor",
+                    })
+                  }}
+                  disabled={isCreating}
+                >
+                  Cancelar
+                </Button>
+                <Button type="submit" disabled={isCreating}>
+                  {isCreating ? "Criando..." : "Criar Usuário"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+          <DialogContent className="sm:max-w-[400px]">
+            <DialogHeader>
+              <DialogTitle>Editar Usuário</DialogTitle>
+              <DialogDescription>
+                Edite as informações do usuário: <strong>{editingUser?.email}</strong>
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleEditUser} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="editUserName">Nome Completo</Label>
+                <Input
+                  id="editUserName"
+                  value={editForm.name}
+                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                  required
+                  minLength={2}
+                  disabled={isUpdating}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="editUserPassword">Nova Senha (opcional)</Label>
+                <Input
+                  id="editUserPassword"
+                  type="password"
+                  value={editForm.password}
+                  onChange={(e) => setEditForm({ ...editForm, password: e.target.value })}
+                  minLength={6}
+                  disabled={isUpdating}
+                  placeholder="Deixe em branco para não alterar"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Deixe em branco para não alterar a senha. Mínimo de 6 caracteres se preenchido.
+                </p>
+              </div>
+
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setShowEditDialog(false)
+                    setEditingUser(null)
+                    setEditForm({ name: "", password: "" })
+                  }}
+                  disabled={isUpdating}
+                >
+                  Cancelar
+                </Button>
+                <Button type="submit" disabled={isUpdating}>
+                  {isUpdating ? "Salvando..." : "Salvar Alterações"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
       </main>
     </ProtectedRoute>
   )

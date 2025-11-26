@@ -17,6 +17,7 @@ import {
   createProduct,
   updateProduct,
   deleteProduct,
+  isProductUsedInOrders,
   type DatabaseProduct,
 } from "@/lib/supabase/database"
 
@@ -31,6 +32,7 @@ export default function ProdutosPage() {
   const [showAddForm, setShowAddForm] = useState(false)
   const [editingProduct, setEditingProduct] = useState<DatabaseProduct | null>(null)
   const [showFilters, setShowFilters] = useState(false)
+  const [productUsageMap, setProductUsageMap] = useState<Record<string, boolean>>({})
 
   const [formData, setFormData] = useState({
     nome: "",
@@ -51,6 +53,18 @@ export default function ProdutosPage() {
       setLoading(true)
       const data = await getAllProducts()
       setProducts(data)
+      
+      // Verificar quais produtos estão sendo usados em pedidos
+      const usageMap: Record<string, boolean> = {}
+      for (const product of data) {
+        try {
+          usageMap[product.id] = await isProductUsedInOrders(product.id)
+        } catch (error) {
+          console.error(`[v0] Error checking usage for product ${product.id}:`, error)
+          usageMap[product.id] = false
+        }
+      }
+      setProductUsageMap(usageMap)
     } catch (error) {
       console.error("[v0] Error loading products:", error)
       toast({
@@ -80,10 +94,56 @@ export default function ProdutosPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
+    // Validação dos campos obrigatórios
+    if (!formData.nome.trim()) {
+      toast({
+        title: "Erro",
+        description: "O nome do produto é obrigatório",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (!formData.marca) {
+      toast({
+        title: "Erro",
+        description: "A marca é obrigatória",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (!formData.tipo) {
+      toast({
+        title: "Erro",
+        description: "O tipo de veículo é obrigatório",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (!formData.preco_base || Number(formData.preco_base) <= 0) {
+      toast({
+        title: "Erro",
+        description: "O preço base deve ser maior que zero",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (!formData.desconto_maximo_bt || Number(formData.desconto_maximo_bt) < 0) {
+      toast({
+        title: "Erro",
+        description: "O desconto máximo deve ser maior ou igual a zero",
+        variant: "destructive",
+      })
+      return
+    }
+
     try {
       if (editingProduct) {
         await updateProduct(editingProduct.id, {
-          nome: formData.nome,
+          nome: formData.nome.trim(),
           marca: formData.marca,
           tipo: formData.tipo,
           categoria: formData.categoria,
@@ -99,7 +159,7 @@ export default function ProdutosPage() {
         setEditingProduct(null)
       } else {
         await createProduct({
-          nome: formData.nome,
+          nome: formData.nome.trim(),
           marca: formData.marca,
           tipo: formData.tipo,
           categoria: formData.categoria,
@@ -125,11 +185,11 @@ export default function ProdutosPage() {
         ativo: true,
       })
       setShowAddForm(false)
-    } catch (error) {
+    } catch (error: any) {
       console.error("[v0] Error saving product:", error)
       toast({
         title: "Erro",
-        description: "Não foi possível salvar o produto",
+        description: error?.message || "Não foi possível salvar o produto",
         variant: "destructive",
       })
     }
@@ -150,6 +210,18 @@ export default function ProdutosPage() {
   }
 
   const handleDelete = async (productId: string) => {
+    // Verificar se o produto está sendo usado
+    const isUsed = productUsageMap[productId]
+    
+    if (isUsed) {
+      toast({
+        title: "Não é possível excluir",
+        description: "Este produto já foi usado em pedidos anteriores. Você pode inativá-lo ao invés de excluir.",
+        variant: "destructive",
+      })
+      return
+    }
+
     if (!confirm("Tem certeza que deseja excluir este produto?")) return
 
     try {
@@ -162,9 +234,39 @@ export default function ProdutosPage() {
     } catch (error: any) {
       console.error("[v0] Error deleting product:", error)
       const errorMessage = error?.message || "Não foi possível excluir o produto"
+      
+      // Se o erro for sobre produto usado, sugerir inativar
+      if (errorMessage.includes("usado em pedidos")) {
+        toast({
+          title: "Não é possível excluir",
+          description: "Este produto já foi usado em pedidos anteriores. Você pode inativá-lo ao invés de excluir.",
+          variant: "destructive",
+        })
+      } else {
+        toast({
+          title: "Erro",
+          description: errorMessage,
+          variant: "destructive",
+        })
+      }
+    }
+  }
+
+  const handleToggleActive = async (product: DatabaseProduct) => {
+    try {
+      await updateProduct(product.id, {
+        ativo: !product.ativo,
+      })
+      await loadProducts()
+      toast({
+        title: "Sucesso",
+        description: `Produto ${!product.ativo ? "ativado" : "inativado"} com sucesso`,
+      })
+    } catch (error: any) {
+      console.error("[v0] Error toggling product active status:", error)
       toast({
         title: "Erro",
-        description: errorMessage,
+        description: "Não foi possível atualizar o status do produto",
         variant: "destructive",
       })
     }
@@ -219,7 +321,7 @@ export default function ProdutosPage() {
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
-                    <Label htmlFor="nome">Nome do Produto</Label>
+                    <Label htmlFor="nome">Nome do Produto *</Label>
                     <Input
                       id="nome"
                       placeholder="Ex: Kit Embreagem Mercedes 1620"
@@ -230,32 +332,47 @@ export default function ProdutosPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="marca">Marca</Label>
-                    <Input
-                      id="marca"
-                      placeholder="Ex: Mercedes, Ford, Volvo"
+                    <Label htmlFor="marca">Marca *</Label>
+                    <Select
                       value={formData.marca}
-                      onChange={(e) => setFormData({ ...formData, marca: e.target.value })}
+                      onValueChange={(value) => setFormData({ ...formData, marca: value })}
                       required
-                    />
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione a marca" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Mercedes">Mercedes</SelectItem>
+                        <SelectItem value="Ford">Ford</SelectItem>
+                        <SelectItem value="Scania">Scania</SelectItem>
+                        <SelectItem value="Volvo">Volvo</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="tipo">Tipo</Label>
-                    <Input
-                      id="tipo"
-                      placeholder="Ex: Caminhões, Ônibus"
+                    <Label htmlFor="tipo">Tipo Veículo *</Label>
+                    <Select
                       value={formData.tipo}
-                      onChange={(e) => setFormData({ ...formData, tipo: e.target.value })}
+                      onValueChange={(value) => setFormData({ ...formData, tipo: value })}
                       required
-                    />
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione o tipo" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Caminhão">Caminhão</SelectItem>
+                        <SelectItem value="Ônibus">Ônibus</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="categoria">Categoria</Label>
+                    <Label htmlFor="categoria">Categoria *</Label>
                     <Select
                       value={formData.categoria}
                       onValueChange={(value) => setFormData({ ...formData, categoria: value })}
+                      required
                     >
                       <SelectTrigger>
                         <SelectValue />
@@ -271,11 +388,12 @@ export default function ProdutosPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="preco_base">Preço Base (R$)</Label>
+                    <Label htmlFor="preco_base">Preço Base (R$) *</Label>
                     <Input
                       id="preco_base"
                       type="number"
                       step="0.01"
+                      min="0.01"
                       value={formData.preco_base}
                       onChange={(e) => setFormData({ ...formData, preco_base: e.target.value })}
                       required
@@ -283,7 +401,7 @@ export default function ProdutosPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="desconto_maximo_bt">Desconto Máximo (%)</Label>
+                    <Label htmlFor="desconto_maximo_bt">Desconto Máximo (%) *</Label>
                     <Input
                       id="desconto_maximo_bt"
                       type="number"
@@ -482,15 +600,27 @@ export default function ProdutosPage() {
                           <Edit className="h-4 w-4" />
                           Editar
                         </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="flex-1 gap-2 text-destructive border-destructive/50 hover:bg-destructive/10 bg-transparent"
-                          onClick={() => handleDelete(product.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                          Excluir
-                        </Button>
+                        {productUsageMap[product.id] ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="flex-1 gap-2"
+                            onClick={() => handleToggleActive(product)}
+                            title="Produto usado em pedidos - apenas inativar"
+                          >
+                            {product.ativo ? "Inativar" : "Ativar"}
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="flex-1 gap-2 text-destructive border-destructive/50 hover:bg-destructive/10 bg-transparent"
+                            onClick={() => handleDelete(product.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            Excluir
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </CardContent>
@@ -539,14 +669,25 @@ export default function ProdutosPage() {
                           <Button size="sm" variant="ghost" onClick={() => handleEdit(product)}>
                             <Edit className="h-4 w-4" />
                           </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="text-destructive"
-                            onClick={() => handleDelete(product.id)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                          {productUsageMap[product.id] ? (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleToggleActive(product)}
+                              title="Produto usado em pedidos - apenas inativar"
+                            >
+                              {product.ativo ? "Inativar" : "Ativar"}
+                            </Button>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="text-destructive"
+                              onClick={() => handleDelete(product.id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
                         </div>
                       </td>
                     </tr>

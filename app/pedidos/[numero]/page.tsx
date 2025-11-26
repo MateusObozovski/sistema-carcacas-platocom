@@ -3,8 +3,6 @@
 import { useState, useEffect } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { ProtectedRoute } from "@/components/protected-route"
-import { DashboardHeader } from "@/components/dashboard-header"
-import { DashboardNav } from "@/components/dashboard-nav"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { StatusBadge } from "@/components/status-badge"
@@ -139,15 +137,7 @@ export default function PedidoDetalhePage() {
   if (isLoading) {
     return (
       <ProtectedRoute>
-        <div className="flex min-h-screen flex-col">
-          <DashboardHeader />
-          <div className="flex flex-1">
-            <DashboardNav />
-            <main className="flex-1 p-6">
-              <div className="text-center text-muted-foreground">Carregando...</div>
-            </main>
-          </div>
-        </div>
+        <div className="text-center text-muted-foreground py-8">Carregando...</div>
       </ProtectedRoute>
     )
   }
@@ -155,20 +145,12 @@ export default function PedidoDetalhePage() {
   if (!pedido) {
     return (
       <ProtectedRoute>
-        <div className="flex min-h-screen flex-col">
-          <DashboardHeader />
-          <div className="flex flex-1">
-            <DashboardNav />
-            <main className="flex-1 p-6">
-              <div className="text-center">
-                <h2 className="text-2xl font-bold">Pedido não encontrado</h2>
-                <p className="text-muted-foreground">O pedido {params.numero} não existe no sistema.</p>
-                <Button className="mt-4" asChild>
-                  <Link href="/pedidos">Voltar para Pedidos</Link>
-                </Button>
-              </div>
-            </main>
-          </div>
+        <div className="text-center py-8">
+          <h2 className="text-2xl font-bold">Pedido não encontrado</h2>
+          <p className="text-muted-foreground">O pedido {params.numero} não existe no sistema.</p>
+          <Button className="mt-4" asChild>
+            <Link href="/pedidos">Voltar para Pedidos</Link>
+          </Button>
         </div>
       </ProtectedRoute>
     )
@@ -180,12 +162,7 @@ export default function PedidoDetalhePage() {
 
   return (
     <ProtectedRoute>
-      <div className="flex min-h-screen flex-col">
-        <DashboardHeader />
-        <div className="flex flex-1">
-          <DashboardNav />
-          <main className="flex-1 p-6">
-            <div className="mx-auto max-w-4xl space-y-6">
+      <div className="mx-auto max-w-4xl space-y-6">
               <div className="flex items-center gap-4">
                 <Button variant="ghost" size="icon" asChild>
                   <Link href="/pedidos">
@@ -350,9 +327,6 @@ export default function PedidoDetalhePage() {
                   </CardContent>
                 </Card>
               )}
-            </div>
-          </main>
-        </div>
       </div>
     </ProtectedRoute>
   )

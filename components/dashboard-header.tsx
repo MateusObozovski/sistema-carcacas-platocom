@@ -4,6 +4,7 @@ import { useAuth } from "@/lib/auth-context"
 import { Button } from "@/components/ui/button"
 import { LogOut, User, Menu } from "lucide-react"
 import { useRouter } from "next/navigation"
+import Image from "next/image"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -52,10 +53,22 @@ export function DashboardHeader({ onMenuClick }: DashboardHeaderProps) {
           <Menu className="h-5 w-5" />
         </Button>
 
-        {/* Título */}
-        <div className="flex-1">
-          <h1 className="text-lg lg:text-xl font-semibold text-white">Sistema de Carcaças</h1>
-          <p className="hidden sm:block text-sm text-gray-400">Controle de débitos e devoluções</p>
+        {/* Logo e Título */}
+        <div className="flex-1 flex items-center gap-3">
+          <div className="relative h-10 w-32 flex-shrink-0">
+            <Image
+              src="/logo-sem-fundo.png"
+              alt="PLATOCOM EMBREAGENS"
+              fill
+              className="object-contain"
+              priority
+              unoptimized
+            />
+          </div>
+          <div className="flex-1">
+            <h1 className="text-lg lg:text-xl font-semibold text-white">Sistema de Carcaças</h1>
+            <p className="hidden sm:block text-sm text-gray-400">Controle de débitos e devoluções</p>
+          </div>
         </div>
 
         {/* Menu de usuário */}

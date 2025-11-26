@@ -111,6 +111,23 @@ export async function updateProduct(id: string, product: Partial<DatabaseProduct
   return data as DatabaseProduct
 }
 
+export async function isProductUsedInOrders(productId: string): Promise<boolean> {
+  const supabase = createClient()
+  
+  const { data: orderItems, error } = await supabase
+    .from("order_items")
+    .select("id")
+    .eq("produto_id", productId)
+    .limit(1)
+
+  if (error) {
+    console.error("[v0] Error checking product usage:", error)
+    return false // Em caso de erro, assumir que não está sendo usado para não bloquear
+  }
+
+  return orderItems && orderItems.length > 0
+}
+
 export async function deleteProduct(id: string) {
   const supabase = createClient()
   
@@ -127,7 +144,7 @@ export async function deleteProduct(id: string) {
   }
 
   if (orderItems && orderItems.length > 0) {
-    throw new Error("Não é possível excluir um produto que já foi usado em pedidos anteriores")
+    throw new Error("Não é possível excluir um produto que já foi usado em pedidos anteriores. Você pode inativá-lo ao invés de excluir.")
   }
 
   const { error } = await supabase.from("products").delete().eq("id", id)
@@ -290,7 +307,7 @@ export async function getVendedorStats(vendedorId: string) {
     `)
     .gt("debito_carcaca", 0)
     .eq("orders.vendedor_id", vendedorId)
-    .in("orders.status", ["Aguardando Devolução", "Atrasado"])
+    .in("orders.status", ["Aguardando Devolução", "Atrasado", "Concluído"])
 
   if (itemsError) {
     console.error("[v0] Error fetching vendedor stats:", itemsError)
@@ -321,7 +338,7 @@ export async function getClientStats(clienteId: string) {
     `)
     .gt("debito_carcaca", 0)
     .eq("orders.cliente_id", clienteId)
-    .in("orders.status", ["Aguardando Devolução", "Atrasado"])
+    .in("orders.status", ["Aguardando Devolução", "Atrasado", "Concluído"])
 
   if (error) {
     console.error("[v0] Error fetching client stats:", error)

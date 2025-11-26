@@ -113,30 +113,49 @@ export default function RelatoriosPage() {
     return filtrarPorPeriodo(p.data_venda)
   })
 
+  // Função auxiliar para calcular débito pendente de um pedido baseado nos order_items
+  const calcularDebitoPendente = (pedido: any): number => {
+    if (!pedido.order_items || !Array.isArray(pedido.order_items)) return 0
+    return pedido.order_items
+      .filter((item: any) => item.debito_carcaca > 0 && item.tipo_venda === "Base de Troca")
+      .reduce((acc: number, item: any) => acc + (item.debito_carcaca || 0), 0)
+  }
+
+  // Função auxiliar para verificar se um pedido tem carcaças pendentes
+  const temCarcacasPendentes = (pedido: any): boolean => {
+    return calcularDebitoPendente(pedido) > 0
+  }
+
+  // Filtrar pedidos com carcaças pendentes baseado nos order_items
   const carcacasPendentes = pedidosFiltrados.filter(
     (p) =>
       p.tipo_venda === "Base de Troca" &&
-      (p.status === "Aguardando Devolução" || p.status === "Atrasado") &&
-      (p.debito_carcaca || 0) > 0,
+      (p.status === "Aguardando Devolução" || p.status === "Atrasado" || p.status === "Concluído") &&
+      temCarcacasPendentes(p),
   )
 
   const totalVendas = pedidosFiltrados.length
   const vendasBaseTroca = pedidosFiltrados.filter((p) => p.tipo_venda === "Base de Troca").length
   const vendasNormais = pedidosFiltrados.filter((p) => p.tipo_venda === "Normal").length
   const valorTotalVendas = pedidosFiltrados.reduce((acc, p) => acc + (p.valor_total || 0), 0)
-  const debitoTotal = carcacasPendentes.reduce((acc, p) => acc + (p.debito_carcaca || 0), 0)
+  const debitoTotal = carcacasPendentes.reduce((acc, p) => acc + calcularDebitoPendente(p), 0)
   const pedidosAtrasados = carcacasPendentes.filter((p) => p.status === "Atrasado").length
 
   const vendedoresComDados = vendedores.map((vendedor) => {
     const pedidosVendedor = pedidosFiltrados.filter((p) => p.vendedor_id === vendedor.id)
     const carcacasVendedor = carcacasPendentes.filter((p) => p.vendedor_id === vendedor.id)
-    const debitoVendedor = carcacasVendedor.reduce((acc, p) => acc + (p.debito_carcaca || 0), 0)
+    const debitoVendedor = carcacasVendedor.reduce((acc, p) => acc + calcularDebitoPendente(p), 0)
+    // Contar itens pendentes, não pedidos
+    const itensPendentes = carcacasVendedor.reduce(
+      (acc, p) => acc + (p.order_items?.filter((item: any) => item.debito_carcaca > 0 && item.tipo_venda === "Base de Troca").length || 0),
+      0,
+    )
 
     return {
       ...vendedor,
       totalVendas: pedidosVendedor.length,
       valorVendas: pedidosVendedor.reduce((acc, p) => acc + (p.valor_total || 0), 0),
-      carcacasPendentesAtual: carcacasVendedor.length,
+      carcacasPendentesAtual: itensPendentes,
       debitoAtual: debitoVendedor,
     }
   })
@@ -144,13 +163,18 @@ export default function RelatoriosPage() {
   const clientesComDados = clients.map((cliente) => {
     const pedidosCliente = pedidosFiltrados.filter((p) => p.cliente_id === cliente.id)
     const carcacasCliente = carcacasPendentes.filter((p) => p.cliente_id === cliente.id)
-    const debitoCliente = carcacasCliente.reduce((acc, p) => acc + (p.debito_carcaca || 0), 0)
+    const debitoCliente = carcacasCliente.reduce((acc, p) => acc + calcularDebitoPendente(p), 0)
+    // Contar itens pendentes, não pedidos
+    const itensPendentes = carcacasCliente.reduce(
+      (acc, p) => acc + (p.order_items?.filter((item: any) => item.debito_carcaca > 0 && item.tipo_venda === "Base de Troca").length || 0),
+      0,
+    )
 
     return {
       ...cliente,
       totalVendas: pedidosCliente.length,
       valorVendas: pedidosCliente.reduce((acc, p) => acc + (p.valor_total || 0), 0),
-      carcacasPendentesAtual: carcacasCliente.length,
+      carcacasPendentesAtual: itensPendentes,
       debitoAtual: debitoCliente,
     }
   })
@@ -254,7 +278,14 @@ export default function RelatoriosPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{formatCurrency(debitoTotal)}</div>
-                <p className="text-xs text-muted-foreground">{carcacasPendentes.length} carcaças</p>
+                <p className="text-xs text-muted-foreground">
+                  {carcacasPendentes.reduce(
+                    (acc, p) =>
+                      acc + (p.order_items?.filter((item: any) => item.debito_carcaca > 0 && item.tipo_venda === "Base de Troca").length || 0),
+                    0,
+                  )}{" "}
+                  carcaças
+                </p>
               </CardContent>
             </Card>
 
@@ -492,26 +523,44 @@ export default function RelatoriosPage() {
                           </TableCell>
                         </TableRow>
                       ) : (
-                        carcacasPendentes
-                          .sort((a, b) => getDaysPending(b.data_venda) - getDaysPending(a.data_venda))
-                          .map((pedido) => {
-                            const cliente = clients.find((c) => c.id === pedido.cliente_id)
-                            const vendedor = vendedores.find((v) => v.id === pedido.vendedor_id)
-                            const primeiroItem = pedido.order_items?.[0]
-                            return (
-                              <TableRow key={pedido.id}>
-                                <TableCell className="font-mono text-sm">{pedido.numero_pedido}</TableCell>
-                                <TableCell>{cliente?.nome}</TableCell>
-                                <TableCell>{vendedor?.nome}</TableCell>
-                                <TableCell>{primeiroItem?.produto_nome || "-"}</TableCell>
-                                <TableCell className="text-right">{formatCurrency(pedido.debito_carcaca || 0)}</TableCell>
-                                <TableCell className="text-center">{getDaysPending(pedido.data_venda)}</TableCell>
-                                <TableCell>
-                                  <StatusBadge status={mapStatusToBadge(pedido.status)} />
-                                </TableCell>
-                              </TableRow>
-                            )
-                          })
+                        (() => {
+                          // Expandir pedidos em itens pendentes individuais
+                          const itensPendentes: any[] = []
+                          carcacasPendentes
+                            .sort((a, b) => getDaysPending(b.data_venda) - getDaysPending(a.data_venda))
+                            .forEach((pedido) => {
+                              const cliente = clients.find((c) => c.id === pedido.cliente_id)
+                              const vendedor = vendedores.find((v) => v.id === pedido.vendedor_id)
+                              
+                              // Filtrar apenas itens com débito pendente
+                              const itensComDebito = (pedido.order_items || []).filter(
+                                (item: any) => item.debito_carcaca > 0 && item.tipo_venda === "Base de Troca"
+                              )
+                              
+                              itensComDebito.forEach((item: any) => {
+                                itensPendentes.push({
+                                  pedido,
+                                  item,
+                                  cliente,
+                                  vendedor,
+                                })
+                              })
+                            })
+
+                          return itensPendentes.map(({ pedido, item, cliente, vendedor }, idx) => (
+                            <TableRow key={`${pedido.id}-${item.id}-${idx}`}>
+                              <TableCell className="font-mono text-sm">{pedido.numero_pedido}</TableCell>
+                              <TableCell>{cliente?.nome}</TableCell>
+                              <TableCell>{vendedor?.nome}</TableCell>
+                              <TableCell>{item.produto_nome || "-"}</TableCell>
+                              <TableCell className="text-right">{formatCurrency(item.debito_carcaca || 0)}</TableCell>
+                              <TableCell className="text-center">{getDaysPending(pedido.data_venda)}</TableCell>
+                              <TableCell>
+                                <StatusBadge status={mapStatusToBadge(pedido.status)} />
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        })()
                       )}
                     </TableBody>
                   </Table>

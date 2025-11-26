@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useAuth } from "@/lib/auth-context"
+import { updateOrderStatus } from "@/lib/supabase/database"
 import Link from "next/link"
 import { Search, CheckCircle, AlertTriangle, Bell } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -145,32 +146,111 @@ export default function CarcacasPendentesPage() {
     return Math.floor(diff / (1000 * 60 * 60 * 24))
   }
 
-  const handleRegistrarDevolucao = async (itemId: string, debitoValue: number) => {
+  const handleRegistrarDevolucao = async (itemId: string, debitoValue: number, orderId: string) => {
     try {
-      const { error } = await supabase
+      // Atualizar o order_item zerando o débito
+      const { error: itemError } = await supabase
         .from("order_items")
         .update({
           debito_carcaca: 0,
         })
         .eq("id", itemId)
 
-      if (error) {
+      if (itemError) {
+        console.error("[v0] Error updating order item:", itemError)
         toast({
           title: "Erro ao registrar devolução",
-          description: error.message,
+          description: itemError.message || "Não foi possível atualizar o item do pedido",
           variant: "destructive",
         })
         return
       }
 
-      setCarcacasPendentes((prev) => prev.filter((item) => item.id !== itemId))
+      // Verificar se todas as carcaças do pedido foram devolvidas
+      const { data: remainingItems, error: checkError } = await supabase
+        .from("order_items")
+        .select("id, debito_carcaca")
+        .eq("order_id", orderId)
+        .gt("debito_carcaca", 0)
+
+      if (checkError) {
+        console.error("[v0] Error checking remaining items:", checkError)
+      }
+
+      // Se não há mais carcaças pendentes neste pedido, atualizar status do pedido
+      if (!remainingItems || remainingItems.length === 0) {
+        const dataDevolucao = new Date().toISOString()
+        try {
+          await updateOrderStatus(orderId, "Concluído", dataDevolucao)
+        } catch (orderError: any) {
+          console.error("[v0] Error updating order status:", orderError)
+          // Não falhar se não conseguir atualizar o status, apenas logar
+        }
+      }
+
+      // Recarregar a lista de carcaças pendentes
+      const fetchCarcacas = async () => {
+        try {
+          const { data: orderItems, error } = await supabase
+            .from("order_items")
+            .select(
+              `
+            id,
+            ordem:order_id,
+            orders!inner(
+              id,
+              numero_pedido,
+              vendedor_id,
+              cliente_id,
+              data_venda,
+              data_devolucao,
+              created_at,
+              clients!inner(
+                id,
+                nome,
+                vendedor_id
+              ),
+              profiles(id, nome, email)
+            ),
+            produto_nome,
+            debito_carcaca,
+            tipo_venda,
+            created_at
+          `,
+            )
+            .gt("debito_carcaca", 0)
+            .eq("tipo_venda", "Base de Troca")
+            .order("created_at", { ascending: false })
+
+          if (error) {
+            console.error("[v0] Error fetching carcacas:", error)
+            return
+          }
+
+          let filtered = orderItems || []
+          if (user?.role === "Vendedor") {
+            filtered = filtered.filter((item: any) => item.orders?.vendedor_id === user.id)
+          }
+
+          setCarcacasPendentes(filtered)
+        } catch (err) {
+          console.error("[v0] Error reloading carcacas:", err)
+        }
+      }
+
+      await fetchCarcacas()
 
       toast({
         title: "Devolução registrada!",
         description: `Débito de ${formatCurrency(debitoValue)} zerado`,
       })
-    } catch (err) {
+    } catch (err: any) {
       console.error("[v0] Error registering devolucao:", err)
+      toast({
+        title: "Erro ao registrar devolução",
+        description: err?.message || "Não foi possível registrar a devolução",
+        variant: "destructive",
+      })
     }
   }
 
@@ -409,7 +489,9 @@ export default function CarcacasPendentesPage() {
                                 <AlertDialogFooter>
                                   <AlertDialogCancel>Cancelar</AlertDialogCancel>
                                   <AlertDialogAction
-                                    onClick={() => handleRegistrarDevolucao(item.id, item.debito_carcaca)}
+                                    onClick={() =>
+                                      handleRegistrarDevolucao(item.id, item.debito_carcaca, item.orders?.id)
+                                    }
                                   >
                                     Confirmar Devolução
                                   </AlertDialogAction>

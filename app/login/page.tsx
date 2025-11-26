@@ -33,9 +33,13 @@ export default function LoginPage() {
 
     if (success) {
       console.log("[v0] Redirecting to dashboard...")
-      router.push("/dashboard")
+      // Pequeno delay para garantir que o estado foi atualizado
+      setTimeout(() => {
+        router.push("/dashboard")
+      }, 100)
     } else {
-      setError("Email ou senha inválidos. Verifique suas credenciais e tente novamente.")
+      // Verificar no console qual foi o erro específico
+      setError("Não foi possível fazer login. Verifique o console do navegador para mais detalhes.")
     }
 
     setIsLoading(false)
@@ -47,10 +51,10 @@ export default function LoginPage() {
         <CardHeader className="space-y-4 text-center">
           <div className="mx-auto flex items-center justify-center mb-4">
             <Image
-              src="/logo.png"
+              src="/logo-sem-fundo.png"
               alt="PLATOCOM EMBREAGENS"
-              width={400}
-              height={200}
+              width={300}
+              height={150}
               className="object-contain"
               priority
               unoptimized
@@ -98,32 +102,6 @@ export default function LoginPage() {
               {isLoading ? "Entrando..." : "Entrar"}
             </Button>
           </form>
-
-          <div className="mt-6 space-y-3">
-            <div className="rounded-lg bg-blue-950 border border-blue-800 p-4 text-sm">
-              <p className="font-medium text-blue-400 mb-2">Primeira vez?</p>
-              <p className="text-blue-300 text-sm mb-3">Execute o setup inicial para criar os usuários do sistema.</p>
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full border-blue-700 text-blue-400 hover:bg-blue-900 bg-transparent"
-                onClick={() => router.push("/setup")}
-              >
-                Ir para Setup Inicial
-              </Button>
-            </div>
-
-            <div className="rounded-lg bg-muted p-4 text-sm">
-              <p className="font-medium">Usuários de teste:</p>
-              <div className="space-y-1 text-muted-foreground">
-                <p>Admin: patrao@empresa.com / admin123</p>
-                <p>Gerente: gerente@empresa.com / gerente123</p>
-                <p>Yago: yago@empresa.com / yago123</p>
-                <p>José: jose@empresa.com / jose123</p>
-                <p>Maria: maria@empresa.com / maria123</p>
-              </div>
-            </div>
-          </div>
         </CardContent>
       </Card>
     </div>

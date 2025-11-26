@@ -27,5 +27,10 @@ export function StatusBadge({ status }: StatusBadgeProps) {
 
   const variant = variants[status]
 
+  // Fallback para status inválido ou undefined
+  if (!variant) {
+    return <Badge className="bg-gray-500/10 text-gray-500 hover:bg-gray-500/20">{status || "Desconhecido"}</Badge>
+  }
+
   return <Badge className={variant.className}>{variant.label}</Badge>
 }

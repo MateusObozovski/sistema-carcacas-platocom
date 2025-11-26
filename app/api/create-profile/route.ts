@@ -98,7 +98,15 @@ export async function POST(request: Request) {
 
     console.log("[v0] Profile created successfully:", profile?.id)
     return NextResponse.json(
-      { success: true, profile: { id: profile?.id, email: profile?.email, role: profile?.role } },
+      { 
+        success: true, 
+        profile: { 
+          id: profile?.id, 
+          email: profile?.email, 
+          nome: profile?.nome,
+          role: profile?.role 
+        } 
+      },
       {
         headers: {
           "X-RateLimit-Limit": rateLimitResult.limit.toString(),

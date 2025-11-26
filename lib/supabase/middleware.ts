@@ -95,6 +95,7 @@ export async function updateSession(request: NextRequest) {
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: https:",
     "font-src 'self' data:",
+    "object-src 'self' data:",
     "connect-src 'self' https://*.supabase.co https://*.supabase.in",
     "frame-ancestors 'none'",
     "base-uri 'self'",
