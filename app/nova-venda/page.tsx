@@ -139,7 +139,8 @@ export default function NovaVendaPage() {
     const valorDesconto = (currentPreco * currentDesconto) / 100
     const precoFinal = currentPreco - valorDesconto
     const subtotal = precoFinal * currentQuantidade
-    const debitoCarcaca = valorDesconto * currentQuantidade
+    // debito_carcaca deve ser a quantidade de carcaças, não o valor monetário
+    const debitoCarcaca = currentQuantidade
 
     const newItem: OrderItem = {
       id: `item-${Date.now()}`,
@@ -183,9 +184,8 @@ export default function NovaVendaPage() {
     setItems(items.map(item => {
       if (item.id === itemId) {
         const subtotal = item.precoUnitario * novaQuantidade
-        const debitoCarcaca = item.desconto > 0 
-          ? (item.precoOriginal * item.desconto / 100) * novaQuantidade 
-          : 0
+        // debito_carcaca deve ser a quantidade de carcaças, não o valor monetário
+        const debitoCarcaca = novaQuantidade
         return { ...item, quantidade: novaQuantidade, subtotal, debitoCarcaca }
       }
       return item
@@ -544,7 +544,7 @@ export default function NovaVendaPage() {
                             </p>
                             {item.debitoCarcaca > 0 && (
                               <p className="text-xs text-orange-500">
-                                Débito: {formatCurrency(item.debitoCarcaca)}
+                                Carcaças: {item.debitoCarcaca} carcaça(s)
                               </p>
                             )}
                           </div>
@@ -608,8 +608,8 @@ export default function NovaVendaPage() {
                     )}
                     {totalDebitoCarcaca > 0 && (
                       <div className="flex justify-between text-sm">
-                        <span className="text-orange-500">Débito Carcaças</span>
-                        <span className="font-medium text-orange-500">{formatCurrency(totalDebitoCarcaca)}</span>
+                        <span className="text-orange-500">Carcaças Pendentes</span>
+                        <span className="font-medium text-orange-500">{totalDebitoCarcaca} carcaça(s)</span>
                       </div>
                     )}
                   </div>

@@ -17,7 +17,7 @@ const createUserSchema = z.object({
   name: z.string().min(2, "Nome deve ter pelo menos 2 caracteres").max(100).trim(),
   email: z.string().email("Email inválido").toLowerCase().trim(),
   password: z.string().min(6, "Senha deve ter no mínimo 6 caracteres").max(100),
-  role: z.enum(["admin", "Gerente", "Coordenador", "Vendedor"]),
+  role: z.enum(["admin", "Gerente", "Coordenador", "Vendedor", "operador"]),
 })
 
 export async function POST(request: NextRequest) {

@@ -277,7 +277,7 @@ export default function RelatoriosPage() {
                 <Calendar className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{formatCurrency(debitoTotal)}</div>
+                <div className="text-2xl font-bold">{debitoTotal} carcaça(s)</div>
                 <p className="text-xs text-muted-foreground">
                   {carcacasPendentes.reduce(
                     (acc, p) =>
@@ -553,7 +553,7 @@ export default function RelatoriosPage() {
                               <TableCell>{cliente?.nome}</TableCell>
                               <TableCell>{vendedor?.nome}</TableCell>
                               <TableCell>{item.produto_nome || "-"}</TableCell>
-                              <TableCell className="text-right">{formatCurrency(item.debito_carcaca || 0)}</TableCell>
+                              <TableCell className="text-right">{item.debito_carcaca || 0} carcaça(s)</TableCell>
                               <TableCell className="text-center">{getDaysPending(pedido.data_venda)}</TableCell>
                               <TableCell>
                                 <StatusBadge status={mapStatusToBadge(pedido.status)} />

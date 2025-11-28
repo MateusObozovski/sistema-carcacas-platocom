@@ -25,24 +25,29 @@ export default function LoginPage() {
     setError("")
     setIsLoading(true)
 
-    console.log("[v0] Login form submitted")
+    try {
+      console.log("[v0] Login form submitted")
 
-    const success = await login(email, password)
+      const success = await login(email, password)
 
-    console.log("[v0] Login result:", success)
+      console.log("[v0] Login result:", success)
 
-    if (success) {
-      console.log("[v0] Redirecting to dashboard...")
-      // Pequeno delay para garantir que o estado foi atualizado
-      setTimeout(() => {
-        router.push("/dashboard")
-      }, 100)
-    } else {
-      // Verificar no console qual foi o erro específico
-      setError("Não foi possível fazer login. Verifique o console do navegador para mais detalhes.")
+      if (success) {
+        console.log("[v0] Redirecting to dashboard...")
+        // Pequeno delay para garantir que o estado foi atualizado
+        setTimeout(() => {
+          router.push("/dashboard")
+        }, 100)
+      } else {
+        // Verificar no console qual foi o erro específico
+        setError("Não foi possível fazer login. Verifique o console do navegador para mais detalhes.")
+      }
+    } catch (error) {
+      console.error("[v0] Login error:", error)
+      setError("Erro inesperado ao fazer login. Tente novamente.")
+    } finally {
+      setIsLoading(false)
     }
-
-    setIsLoading(false)
   }
 
   return (

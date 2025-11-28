@@ -242,7 +242,7 @@ export default function CarcacasPendentesPage() {
 
       toast({
         title: "Devolução registrada!",
-        description: `Débito de ${formatCurrency(debitoValue)} zerado`,
+        description: `${debitoValue} carcaça(s) devolvida(s)`,
       })
     } catch (err: any) {
       console.error("[v0] Error registering devolucao:", err)
@@ -330,8 +330,8 @@ export default function CarcacasPendentesPage() {
               <AlertTriangle className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{formatCurrency(totalDebito)}</div>
-              <p className="text-xs text-muted-foreground">Valor pendente</p>
+              <div className="text-2xl font-bold">{totalDebito} carcaça(s)</div>
+              <p className="text-xs text-muted-foreground">Carcaças pendentes</p>
             </CardContent>
           </Card>
 
@@ -453,7 +453,7 @@ export default function CarcacasPendentesPage() {
                           <TableCell>{item.orders?.profiles?.nome}</TableCell>
                         )}
                         <TableCell>{item.produto_nome}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(item.debito_carcaca)}</TableCell>
+                        <TableCell className="text-right">{item.debito_carcaca} carcaça(s)</TableCell>
                         <TableCell className="text-center">
                           <Badge
                             variant={diasPendente > 30 ? "destructive" : diasPendente > 20 ? "default" : "secondary"}
@@ -481,9 +481,8 @@ export default function CarcacasPendentesPage() {
                                 <AlertDialogHeader>
                                   <AlertDialogTitle>Confirmar devolução de carcaça</AlertDialogTitle>
                                   <AlertDialogDescription>
-                                    Tem certeza que deseja registrar a devolução da carcaça do pedido{" "}
-                                    {item.orders?.numero_pedido}? O débito de {formatCurrency(item.debito_carcaca)} será
-                                    zerado automaticamente.
+                                    Tem certeza que deseja registrar a devolução de {item.debito_carcaca} carcaça(s) do pedido{" "}
+                                    {item.orders?.numero_pedido}?
                                   </AlertDialogDescription>
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>

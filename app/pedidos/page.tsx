@@ -220,7 +220,7 @@ export default function PedidosPage() {
                         <TableCell>{pedido.clients?.nome || "-"}</TableCell>
                         <TableCell className="text-right">{formatCurrency(pedido.valor_total || 0)}</TableCell>
                         <TableCell className="text-right">
-                          {pedido.debito_carcaca > 0 ? formatCurrency(pedido.debito_carcaca) : "-"}
+                          {pedido.debito_carcaca > 0 ? `${pedido.debito_carcaca} carcaça(s)` : "-"}
                         </TableCell>
                         <TableCell>{formatDate(pedido.data_venda)}</TableCell>
                         <TableCell>

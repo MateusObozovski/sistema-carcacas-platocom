@@ -290,6 +290,8 @@ export default function UsuariosPage() {
       Gerente: { label: "Gerente", variant: "default" },
       Coordenador: { label: "Coordenador", variant: "secondary" },
       Vendedor: { label: "Vendedor", variant: "outline" },
+      operador: { label: "Operador", variant: "secondary" },
+      Cliente: { label: "Cliente", variant: "outline" },
     }
     return variants[role] || { label: role || "Desconhecido", variant: "outline" as const }
   }
@@ -481,6 +483,7 @@ export default function UsuariosPage() {
                     <SelectItem value="Coordenador">Coordenador</SelectItem>
                     <SelectItem value="Gerente">Gerente</SelectItem>
                     <SelectItem value="admin">Admin</SelectItem>
+                    <SelectItem value="operador">Operador</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

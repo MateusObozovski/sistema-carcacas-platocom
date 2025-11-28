@@ -187,7 +187,7 @@ export default function PedidoDetalhePage() {
                           <AlertDialogTitle>Confirmar devolução de carcaça</AlertDialogTitle>
                           <AlertDialogDescription>
                             Tem certeza que deseja registrar a devolução da carcaça do pedido {pedido.numero_pedido}? O
-                            débito de {formatCurrency(pedido.debito_carcaca || 0)} será zerado automaticamente.
+                            {pedido.debito_carcaca || 0} carcaça(s) será(ão) devolvida(s) automaticamente.
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
@@ -292,7 +292,7 @@ export default function PedidoDetalhePage() {
                     <div className="space-y-3">
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Débito de Carcaça</span>
-                        <span className="font-medium text-yellow-500">{formatCurrency(pedido.debito_carcaca || 0)}</span>
+                        <span className="font-medium text-yellow-500">{pedido.debito_carcaca || 0} carcaça(s)</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Status</span>

@@ -16,6 +16,8 @@ import {
   Box,
   Settings,
   Upload,
+  ArrowRightLeft,
+  PackageCheck,
 } from "lucide-react"
 
 interface DashboardNavProps {
@@ -101,7 +103,19 @@ export function DashboardNav({ isOpen, onClose }: DashboardNavProps) {
       title: "Meu Perfil",
       href: "/perfil",
       icon: UserCircle,
-      roles: ["Vendedor"],
+      roles: ["admin", "Gerente", "Coordenador", "Vendedor"],
+    },
+    {
+      title: "Entrada de Mercadoria",
+      href: "/entrada-mercadoria",
+      icon: PackageCheck,
+      roles: ["admin", "Gerente", "Coordenador", "Vendedor", "operador"],
+    },
+    {
+      title: "Vincular Entrada",
+      href: "/vincular-entrada",
+      icon: ArrowRightLeft,
+      roles: ["admin", "Gerente", "Coordenador", "Vendedor"],
     },
   ]
 
@@ -110,10 +124,14 @@ export function DashboardNav({ isOpen, onClose }: DashboardNavProps) {
       console.warn("[v0] DashboardNav - No user found")
       return false
     }
-    const hasAccess = item.roles.includes(user.role)
-    if (!hasAccess && user.role === "admin") {
-      console.error(`[v0] DashboardNav - Admin user cannot access ${item.title}. User role: ${user.role}, Required roles: ${JSON.stringify(item.roles)}`)
+    
+    // Se for operador, só mostra "Entrada de Mercadoria"
+    if (user.role === "operador") {
+      return item.href === "/entrada-mercadoria"
     }
+    
+    const hasAccess = item.roles.includes(user.role)
+    // Remover log de erro desnecessário - admin pode não ter acesso a alguns itens específicos
     return hasAccess
   })
 

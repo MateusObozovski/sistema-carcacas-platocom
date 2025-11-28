@@ -248,6 +248,18 @@ export async function createOrder(
 ) {
   const supabase = createClient()
 
+  // Validar que debito_carcaca de cada item seja igual à quantidade (não valor monetário)
+  // debito_carcaca representa a quantidade de carcaças pendentes, não o valor monetário
+  for (const item of items) {
+    if (item.debito_carcaca !== item.quantidade) {
+      console.warn(
+        `[v0] Warning: debito_carcaca (${item.debito_carcaca}) should equal quantidade (${item.quantidade}) for item ${item.produto_nome}`,
+      )
+      // Garantir que debito_carcaca seja igual à quantidade
+      item.debito_carcaca = item.quantidade
+    }
+  }
+
   // Insert order
   const { data: orderData, error: orderError } = await supabase.from("orders").insert([order]).select().single()
 
@@ -517,4 +529,368 @@ export async function getUsers() {
   }
 
   return data as DatabaseUser[]
+}
+
+// Merchandise Entries
+export interface DatabaseMerchandiseEntry {
+  id: string
+  cliente_id: string
+  numero_nota_fiscal: string
+  data_nota: string
+  status: "Pendente" | "Concluída"
+  created_by: string
+  created_at: string
+  updated_at: string
+  clients?: DatabaseClient
+  profiles?: { nome: string; email: string }
+}
+
+export interface DatabaseMerchandiseEntryItem {
+  id: string
+  entry_id: string
+  produto_id: string
+  produto_nome: string
+  quantidade: number
+  preco_unitario?: number | null
+  vinculado: boolean
+  order_item_id?: string
+  created_at: string
+  products?: DatabaseProduct
+}
+
+export interface MerchandiseEntryWithItems extends DatabaseMerchandiseEntry {
+  items: DatabaseMerchandiseEntryItem[]
+}
+
+export async function createMerchandiseEntry(
+  entry: Omit<DatabaseMerchandiseEntry, "id" | "created_at" | "updated_at">,
+  items: Omit<DatabaseMerchandiseEntryItem, "id" | "entry_id" | "created_at" | "vinculado" | "order_item_id" | "preco_unitario">[]
+) {
+  const supabase = createClient()
+  
+  // Criar entrada
+  const { data: entryData, error: entryError } = await supabase
+    .from("merchandise_entries")
+    .insert({
+      cliente_id: entry.cliente_id,
+      numero_nota_fiscal: entry.numero_nota_fiscal,
+      data_nota: entry.data_nota,
+      status: entry.status,
+      created_by: entry.created_by,
+    })
+    .select()
+    .single()
+
+  if (entryError) {
+    console.error("[v0] Error creating merchandise entry:", entryError)
+    throw entryError
+  }
+
+  // Criar itens
+  if (items.length > 0) {
+    const { error: itemsError } = await supabase.from("merchandise_entry_items").insert(
+      items.map((item) => ({
+        entry_id: entryData.id,
+        produto_id: item.produto_id,
+        produto_nome: item.produto_nome,
+        quantidade: item.quantidade,
+        // preco_unitario não é mais obrigatório
+      }))
+    )
+
+    if (itemsError) {
+      console.error("[v0] Error creating merchandise entry items:", itemsError)
+      // Tentar deletar a entrada criada
+      await supabase.from("merchandise_entries").delete().eq("id", entryData.id)
+      throw itemsError
+    }
+  }
+
+  return entryData
+}
+
+export async function getMerchandiseEntries(userId?: string, userRole?: string) {
+  const supabase = createClient()
+  
+  let query = supabase
+    .from("merchandise_entries")
+    .select(`
+      *,
+      clients(*),
+      profiles!merchandise_entries_created_by_fkey(nome, email)
+    `)
+    .order("created_at", { ascending: false })
+
+  // Se for operador, só ver suas próprias entradas
+  if (userRole === "operador" && userId) {
+    query = query.eq("created_by", userId)
+  }
+
+  const { data, error } = await query
+
+  if (error) {
+    console.error("[v0] Error fetching merchandise entries:", error)
+    throw error
+  }
+
+  return data as DatabaseMerchandiseEntry[]
+}
+
+export async function getMerchandiseEntryById(id: string) {
+  const supabase = createClient()
+  
+  const { data: entry, error: entryError } = await supabase
+    .from("merchandise_entries")
+    .select(`
+      *,
+      clients(*),
+      profiles!merchandise_entries_created_by_fkey(nome, email)
+    `)
+    .eq("id", id)
+    .single()
+
+  if (entryError) {
+    console.error("[v0] Error fetching merchandise entry:", entryError)
+    throw entryError
+  }
+
+  const { data: items, error: itemsError } = await supabase
+    .from("merchandise_entry_items")
+    .select(`
+      *,
+      products(*)
+    `)
+    .eq("entry_id", id)
+    .order("created_at", { ascending: true })
+
+  if (itemsError) {
+    console.error("[v0] Error fetching merchandise entry items:", itemsError)
+    throw itemsError
+  }
+
+  return {
+    ...entry,
+    items: items || [],
+  } as MerchandiseEntryWithItems
+}
+
+export async function updateMerchandiseEntryStatus(id: string, status: "Pendente" | "Concluída") {
+  const supabase = createClient()
+  
+  const { data, error } = await supabase
+    .from("merchandise_entries")
+    .update({ status })
+    .eq("id", id)
+    .select()
+    .single()
+
+  if (error) {
+    console.error("[v0] Error updating merchandise entry status:", error)
+    throw error
+  }
+
+  return data
+}
+
+export async function getPendingCarcacasByCliente(clienteId: string) {
+  const supabase = createClient()
+  
+  const { data, error } = await supabase
+    .from("order_items")
+    .select(`
+      *,
+      orders!inner(
+        id,
+        numero_pedido,
+        cliente_id,
+        status
+      )
+    `)
+    .eq("orders.cliente_id", clienteId)
+    .gt("debito_carcaca", 0)
+    .eq("tipo_venda", "Base de Troca")
+    .order("created_at", { ascending: false })
+
+  if (error) {
+    console.error("[v0] Error fetching pending carcacas:", error)
+    throw error
+  }
+
+  return data || []
+}
+
+export async function vincularEntradaComCarcacas(
+  entryItemId: string,
+  orderItemId: string,
+  quantidade: number
+) {
+  const supabase = createClient()
+  
+  // Buscar o order_item atual
+  const { data: orderItem, error: orderItemError } = await supabase
+    .from("order_items")
+    .select("*")
+    .eq("id", orderItemId)
+    .single()
+
+  if (orderItemError || !orderItem) {
+    console.error("[v0] Error fetching order item:", orderItemError)
+    throw new Error("Item de pedido não encontrado")
+  }
+
+  // Verificar se há débito suficiente
+  if (orderItem.debito_carcaca < quantidade) {
+    throw new Error("Quantidade a vincular excede o débito disponível")
+  }
+
+  // Atualizar o order_item reduzindo o débito
+  const novoDebito = orderItem.debito_carcaca - quantidade
+  console.log(`[v0] Updating order_item ${orderItemId}: debito_carcaca ${orderItem.debito_carcaca} -> ${novoDebito} (quantidade: ${quantidade})`)
+  
+  const { data: updatedOrderItem, error: updateOrderItemError } = await supabase
+    .from("order_items")
+    .update({ debito_carcaca: novoDebito })
+    .eq("id", orderItemId)
+    .select()
+    .single()
+
+  if (updateOrderItemError) {
+    console.error("[v0] Error updating order item:", updateOrderItemError)
+    throw updateOrderItemError
+  }
+  
+  console.log(`[v0] Order item updated successfully:`, updatedOrderItem)
+
+  // Vincular o item da entrada
+  const { error: linkError } = await supabase
+    .from("merchandise_entry_items")
+    .update({
+      vinculado: true,
+      order_item_id: orderItemId,
+    })
+    .eq("id", entryItemId)
+
+  if (linkError) {
+    console.error("[v0] Error linking entry item:", linkError)
+    // Reverter a atualização do order_item
+    await supabase
+      .from("order_items")
+      .update({ debito_carcaca: orderItem.debito_carcaca })
+      .eq("id", orderItemId)
+    throw linkError
+  }
+
+  // Verificar se todos os itens do pedido foram devolvidos
+  const { data: allOrderItems, error: allItemsError } = await supabase
+    .from("order_items")
+    .select("debito_carcaca")
+    .eq("order_id", orderItem.order_id)
+
+  if (allItemsError) {
+    console.error("[v0] Error checking all order items:", allItemsError)
+    // Não falhar o vínculo por causa disso
+    return
+  }
+
+  const todosItensDevolvidos = allOrderItems?.every((item) => item.debito_carcaca === 0) ?? false
+
+  if (todosItensDevolvidos) {
+    // Atualizar status do pedido para "Concluído"
+    const { error: updateOrderError } = await supabase
+      .from("orders")
+      .update({
+        status: "Concluído",
+        data_devolucao: new Date().toISOString(),
+      })
+      .eq("id", orderItem.order_id)
+
+    if (updateOrderError) {
+      console.error("[v0] Error updating order status:", updateOrderError)
+      // Não falhar o vínculo por causa disso
+    }
+  }
+
+  // Verificar se todos os itens da entrada foram vinculados
+  const { data: entryItem, error: entryItemError } = await supabase
+    .from("merchandise_entry_items")
+    .select("entry_id")
+    .eq("id", entryItemId)
+    .single()
+
+  if (entryItemError || !entryItem) {
+    console.error("[v0] Error fetching entry item:", entryItemError)
+    return
+  }
+
+  const { data: allEntryItems, error: allEntryItemsError } = await supabase
+    .from("merchandise_entry_items")
+    .select("vinculado")
+    .eq("entry_id", entryItem.entry_id)
+
+  if (allEntryItemsError) {
+    console.error("[v0] Error checking all entry items:", allEntryItemsError)
+    return
+  }
+
+  const todosItensVinculados = allEntryItems?.every((item) => item.vinculado === true) ?? false
+
+  if (todosItensVinculados) {
+    // Atualizar status da entrada para "Concluída"
+    await updateMerchandiseEntryStatus(entryItem.entry_id, "Concluída")
+  }
+}
+
+export async function getMerchandiseEntriesWithLinks(userId?: string, userRole?: string) {
+  const supabase = createClient()
+  
+  let query = supabase
+    .from("merchandise_entries")
+    .select(`
+      *,
+      clients(*),
+      profiles!merchandise_entries_created_by_fkey(nome, email),
+      merchandise_entry_items(
+        *,
+        order_items:order_item_id(
+          id,
+          produto_nome,
+          debito_carcaca,
+          orders(
+            id,
+            numero_pedido,
+            data_venda,
+            status
+          )
+        )
+      )
+    `)
+    .order("created_at", { ascending: false })
+
+  // Se for operador, só ver suas próprias entradas
+  if (userRole === "operador" && userId) {
+    query = query.eq("created_by", userId)
+  }
+
+  const { data, error } = await query
+
+  if (error) {
+    console.error("[v0] Error fetching merchandise entries with links:", error)
+    throw error
+  }
+
+  return data as (DatabaseMerchandiseEntry & {
+    merchandise_entry_items: (DatabaseMerchandiseEntryItem & {
+      order_items?: {
+        id: string
+        produto_nome: string
+        debito_carcaca: number
+        orders?: {
+          id: string
+          numero_pedido: string
+          data_venda: string
+          status: string
+        }
+      } | null
+    })[]
+  })[]
 }

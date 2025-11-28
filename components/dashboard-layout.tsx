@@ -30,8 +30,15 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     if (!isLoading && !user && !isPublicPath) {
       console.log("[v0] DashboardLayout: No user, redirecting to login")
       router.push("/login")
+      return
     }
-  }, [user, isLoading, isPublicPath, router])
+
+    // Se for operador, só pode acessar /entrada-mercadoria
+    if (!isLoading && user && user.role === "operador" && pathname !== "/entrada-mercadoria" && !isPublicPath) {
+      console.log("[v0] DashboardLayout: Operador trying to access restricted page, redirecting to entrada-mercadoria")
+      router.push("/entrada-mercadoria")
+    }
+  }, [user, isLoading, isPublicPath, pathname, router])
 
   if (isPublicPath) {
     return <>{children}</>
