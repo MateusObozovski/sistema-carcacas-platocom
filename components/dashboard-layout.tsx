@@ -1,17 +1,15 @@
 "use client"
 
 import type React from "react"
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 import { DashboardHeader } from "@/components/dashboard-header"
 import { DashboardNav } from "@/components/dashboard-nav"
 import { useAuth } from "@/lib/auth-context"
-import { usePathname, useRouter } from "next/navigation"
-import { useEffect } from "react"
+import { usePathname } from "next/navigation"
 
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth()
   const pathname = usePathname()
-  const router = useRouter()
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
 
   // Use useCallback para manter a mesma referência da função
@@ -27,18 +25,12 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const isPublicPath = publicPaths.includes(pathname)
 
   useEffect(() => {
-    if (!isLoading && !user && !isPublicPath) {
-      console.log("[v0] DashboardLayout: No user, redirecting to login")
-      router.push("/login")
-      return
-    }
-
     // Se for operador, só pode acessar /entrada-mercadoria
     if (!isLoading && user && user.role === "operador" && pathname !== "/entrada-mercadoria" && !isPublicPath) {
       console.log("[v0] DashboardLayout: Operador trying to access restricted page, redirecting to entrada-mercadoria")
-      router.push("/entrada-mercadoria")
+      window.location.href = "/entrada-mercadoria"
     }
-  }, [user, isLoading, isPublicPath, pathname, router])
+  }, [user, isLoading, isPublicPath, pathname])
 
   if (isPublicPath) {
     return <>{children}</>
@@ -67,5 +59,9 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     )
   }
 
-  return null
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-black">
+      <p className="text-sm text-gray-400">Sessão inválida. Atualize a página ou faça login novamente.</p>
+    </div>
+  )
 }
