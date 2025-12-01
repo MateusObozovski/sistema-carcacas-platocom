@@ -1,39 +1,47 @@
-"use client"
+"use client";
 
-import type React from "react"
-import { useState, useCallback, useEffect } from "react"
-import { DashboardHeader } from "@/components/dashboard-header"
-import { DashboardNav } from "@/components/dashboard-nav"
-import { useAuth } from "@/lib/auth-context"
-import { usePathname } from "next/navigation"
+import type React from "react";
+import { useState, useCallback, useEffect } from "react";
+import { DashboardHeader } from "@/components/dashboard-header";
+import { DashboardNav } from "@/components/dashboard-nav";
+import { useAuth } from "@/lib/auth-context";
+import { usePathname } from "next/navigation";
 
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const { user, isLoading } = useAuth()
-  const pathname = usePathname()
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+  const { user, isLoading } = useAuth();
+  const pathname = usePathname();
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // Use useCallback para manter a mesma referência da função
   const handleCloseSidebar = useCallback(() => {
-    setIsSidebarOpen(false)
-  }, [])
+    setIsSidebarOpen(false);
+  }, []);
 
   const handleToggleSidebar = useCallback(() => {
-    setIsSidebarOpen(prev => !prev)
-  }, [])
+    setIsSidebarOpen((prev) => !prev);
+  }, []);
 
-  const publicPaths = ["/", "/login", "/setup"]
-  const isPublicPath = publicPaths.includes(pathname)
+  const publicPaths = ["/", "/login", "/setup"];
+  const isPublicPath = publicPaths.includes(pathname);
 
   useEffect(() => {
     // Se for operador, só pode acessar /entrada-mercadoria
-    if (!isLoading && user && user.role === "operador" && pathname !== "/entrada-mercadoria" && !isPublicPath) {
-      console.log("[v0] DashboardLayout: Operador trying to access restricted page, redirecting to entrada-mercadoria")
-      window.location.href = "/entrada-mercadoria"
+    if (
+      !isLoading &&
+      user &&
+      user.role === "operador" &&
+      pathname !== "/entrada-mercadoria" &&
+      !isPublicPath
+    ) {
+      console.log(
+        "[v0] DashboardLayout: Operador trying to access restricted page, redirecting to entrada-mercadoria"
+      );
+      window.location.href = "/entrada-mercadoria";
     }
-  }, [user, isLoading, isPublicPath, pathname])
+  }, [user, isLoading, isPublicPath, pathname]);
 
   if (isPublicPath) {
-    return <>{children}</>
+    return <>{children}</>;
   }
 
   if (isLoading) {
@@ -44,7 +52,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
           <p className="mt-4 text-sm text-gray-400">Carregando...</p>
         </div>
       </div>
-    )
+    );
   }
 
   if (user) {
@@ -53,15 +61,19 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         <DashboardHeader onMenuClick={handleToggleSidebar} />
         <div className="flex flex-1">
           <DashboardNav isOpen={isSidebarOpen} onClose={handleCloseSidebar} />
-          <main className="flex-1 overflow-auto p-4 md:p-6 lg:p-8">{children}</main>
+          <main className="flex-1 overflow-auto p-4 md:p-6 lg:p-8">
+            {children}
+          </main>
         </div>
       </div>
-    )
+    );
   }
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-black">
-      <p className="text-sm text-gray-400">Sessão inválida. Atualize a página ou faça login novamente.</p>
+      <p className="text-sm text-gray-400">
+        Sessão inválida. Atualize a página ou faça login novamente.
+      </p>
     </div>
-  )
+  );
 }

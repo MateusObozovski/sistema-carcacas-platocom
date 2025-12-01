@@ -144,10 +144,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               "profile.role:",
               profile.role
             );
-          } else if (profileError) {
-            console.error("[v0] Profile fetch error:", profileError.message);
           } else {
-            console.warn("[v0] No profile found for user:", session.user.id);
+            if (profileError) {
+              console.error(
+                "[v0] Profile fetch error on checkSession:",
+                profileError.message
+              );
+            } else {
+              console.warn(
+                "[v0] No profile found for user on checkSession:",
+                session.user.id
+              );
+            }
+            // Se houver sessão mas não houver profile, consideramos sessão inválida e fazemos sign out
+            await supabase.auth.signOut();
+            setUser(null);
           }
         }
       } catch (error) {
@@ -170,7 +181,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (session?.user && event === "SIGNED_IN") {
-        const { data: profile } = await supabase
+        const { data: profile, error: profileError } = await supabase
           .from("profiles")
           .select("*")
           .eq("id", session.user.id)
@@ -191,7 +202,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             profile.role
           );
         } else {
-          console.warn("[v0] No profile found after SIGNED_IN event");
+          if (profileError) {
+            console.error(
+              "[v0] Profile fetch error after SIGNED_IN:",
+              profileError.message
+            );
+          } else {
+            console.warn(
+              "[v0] No profile found after SIGNED_IN event for user:",
+              session.user.id
+            );
+          }
+          // Se não conseguimos obter profile após SIGNED_IN, força logout para permitir novo login limpo
+          await supabase.auth.signOut();
+          setUser(null);
         }
       }
     });
@@ -265,6 +289,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             return true;
           }
 
+          // Não foi possível criar profile, força logout para limpar sessão inválida
+          await supabase.auth.signOut();
+          setUser(null);
           return false;
         }
 
@@ -313,7 +340,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             return true;
           }
 
-          console.error("[v0] Failed to create profile, login aborted");
+          console.error("[v0] Failed to create profile, login aborted. Signing out.");
+          await supabase.auth.signOut();
+          setUser(null);
           return false;
         }
       }
