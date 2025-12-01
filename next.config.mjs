@@ -12,7 +12,6 @@ const nextConfig = {
   // Configurações de cache e performance
   compress: true,
   poweredByHeader: false,
-  // Headers de segurança serão adicionados no middleware
   async headers() {
     return [
       {
@@ -25,6 +24,16 @@ const nextConfig = {
           {
             key: "X-Content-Type-Options",
             value: "nosniff",
+          },
+        ],
+      },
+      {
+        // APIs sempre sem cache no navegador
+        source: "/api/:path*",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "no-store", // sempre pegar dado novo da API
           },
         ],
       },
@@ -48,8 +57,8 @@ const nextConfig = {
           },
         ],
       },
-    ]
+    ];
   },
-}
+};
 
-export default nextConfig
+export default nextConfig;
