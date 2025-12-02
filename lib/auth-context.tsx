@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useContext, useState, useEffect, useRef, type ReactNode } from "react"
+import { createContext, useContext, useState, useEffect, useRef, useMemo, type ReactNode } from "react"
 import type { User, UserRole } from "./types"
 import { createClient } from "./supabase/client"
 
@@ -16,8 +16,11 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const supabase = createClient()
+  // Usar useMemo para criar cliente Supabase uma única vez e evitar re-renderizações
+  const supabase = useMemo(() => createClient(), [])
   const creatingProfile = useRef(false)
+  // Flag para evitar processamento duplicado entre getSession e onAuthStateChange
+  const isInitializing = useRef(false)
 
   const createProfileViaAPI = async (userId: string, email: string, name: string, role: string) => {
     if (creatingProfile.current) {
@@ -69,20 +72,108 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
+    // Mounted flag para evitar atualizações após desmontagem
+    let mounted = true
+    let subscription: { unsubscribe: () => void } | null = null
+
     const checkSession = async () => {
+      // Prevenir processamento duplicado
+      if (isInitializing.current) {
+        console.log("[v0] Session check already in progress, skipping...")
+        return
+      }
+
       try {
+        isInitializing.current = true
         console.log("[v0] Checking session...")
+        
         const {
           data: { session },
+          error: sessionError,
         } = await supabase.auth.getSession()
 
-        if (session?.user) {
+        if (sessionError) {
+          console.error("[v0] Session error:", sessionError)
+          // Continuar para o finally garantir unlock
+        } else if (mounted && session?.user) {
           console.log("[v0] Session exists, fetching profile...")
+          
+          try {
+            const { data: profile, error: profileError } = await supabase
+              .from("profiles")
+              .select("*")
+              .eq("id", session.user.id)
+              .maybeSingle()
+
+            if (!mounted) {
+              return
+            }
+
+            if (profile) {
+              const userRole = profile.role as UserRole
+              setUser({
+                id: profile.id,
+                name: profile.nome,
+                email: profile.email,
+                role: userRole,
+              })
+              console.log("[v0] User profile loaded - role:", userRole, "profile.role:", profile.role)
+            } else if (profileError) {
+              console.error("[v0] Profile fetch error:", profileError.message)
+            } else {
+              console.warn("[v0] No profile found for user:", session.user.id)
+            }
+          } catch (profileErr) {
+            console.error("[v0] Error fetching profile:", profileErr)
+          }
+        } else if (mounted) {
+          console.log("[v0] No active session found")
+        }
+      } catch (error) {
+        console.error("[v0] Error checking session:", error)
+      } finally {
+        // GARANTIR que isLoading sempre seja false, mesmo em caso de erro
+        if (mounted) {
+          setIsLoading(false)
+        }
+        isInitializing.current = false
+      }
+    }
+
+    // Configurar listener de mudanças de autenticação
+    const {
+      data: { subscription: authSubscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      // Prevenir processamento se já estiver inicializando
+      if (isInitializing.current && event === "SIGNED_IN") {
+        console.log("[v0] Initial session check in progress, skipping SIGNED_IN event")
+        return
+      }
+
+      if (!mounted) {
+        return
+      }
+
+      console.log("[v0] Auth state changed:", event)
+
+      if (event === "SIGNED_OUT") {
+        if (mounted) {
+          setUser(null)
+        }
+        return
+      }
+
+      if (session?.user && event === "SIGNED_IN") {
+        try {
           const { data: profile, error: profileError } = await supabase
             .from("profiles")
             .select("*")
             .eq("id", session.user.id)
             .maybeSingle()
+
+          if (!mounted) {
+            return
+          }
 
           if (profile) {
             const userRole = profile.role as UserRole
@@ -92,54 +183,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               email: profile.email,
               role: userRole,
             })
-            console.log("[v0] User profile loaded - role:", userRole, "profile.role:", profile.role)
+            console.log("[v0] User profile updated - role:", userRole, "profile.role:", profile.role)
           } else if (profileError) {
-            console.error("[v0] Profile fetch error:", profileError.message)
+            console.error("[v0] Profile fetch error in auth state change:", profileError.message)
           } else {
-            console.warn("[v0] No profile found for user:", session.user.id)
+            console.warn("[v0] No profile found after SIGNED_IN event")
           }
-        }
-      } catch (error) {
-        console.error("[v0] Error checking session:", error)
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
-    checkSession()
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log("[v0] Auth state changed:", event)
-
-      if (event === "SIGNED_OUT") {
-        setUser(null)
-        return
-      }
-
-      if (session?.user && event === "SIGNED_IN") {
-        const { data: profile } = await supabase.from("profiles").select("*").eq("id", session.user.id).maybeSingle()
-
-        if (profile) {
-          const userRole = profile.role as UserRole
-          setUser({
-            id: profile.id,
-            name: profile.nome,
-            email: profile.email,
-            role: userRole,
-          })
-          console.log("[v0] User profile updated - role:", userRole, "profile.role:", profile.role)
-        } else {
-          console.warn("[v0] No profile found after SIGNED_IN event")
+        } catch (error) {
+          console.error("[v0] Error in auth state change handler:", error)
         }
       }
     })
 
+    subscription = authSubscription
+
+    // Executar verificação inicial de sessão
+    checkSession()
+
+    // Cleanup function
     return () => {
-      subscription.unsubscribe()
+      mounted = false
+      isInitializing.current = false
+      if (subscription) {
+        subscription.unsubscribe()
+      }
     }
-  }, [supabase])
+    // Remover supabase das dependências para evitar loop infinito
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
@@ -243,8 +314,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const logout = async () => {
-    await supabase.auth.signOut()
-    setUser(null)
+    try {
+      // Limpar estado local primeiro
+      setUser(null)
+      
+      // Aguardar signOut completar
+      const { error } = await supabase.auth.signOut()
+      
+      if (error) {
+        console.error("[v0] Logout error:", error)
+      }
+      
+      // Limpar localStorage/cookies
+      if (typeof window !== 'undefined') {
+        localStorage.clear()
+        // Limpar cookies do Supabase
+        document.cookie.split(";").forEach((c) => {
+          document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/")
+        })
+      }
+    } catch (error) {
+      console.error("[v0] Logout exception:", error)
+    }
   }
 
   return <AuthContext.Provider value={{ user, login, logout, isLoading }}>{children}</AuthContext.Provider>

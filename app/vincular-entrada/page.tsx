@@ -20,10 +20,13 @@ import {
   type MerchandiseEntryWithItems,
 } from "@/lib/supabase/database"
 import { Badge } from "@/components/ui/badge"
+import { isAuthError } from "@/lib/utils"
+import { useRouter } from "next/navigation"
 
 export default function VincularEntradaPage() {
   const { user } = useAuth()
   const { toast } = useToast()
+  const router = useRouter()
   const [searchTerm, setSearchTerm] = useState("")
   const [entradas, setEntradas] = useState<MerchandiseEntryWithItems[]>([])
   const [selectedEntry, setSelectedEntry] = useState<MerchandiseEntryWithItems | null>(null)
@@ -35,9 +38,27 @@ export default function VincularEntradaPage() {
   const [isLinking, setIsLinking] = useState(false)
 
   useEffect(() => {
+    let isMounted = true
     const fetchData = async () => {
+      // Timeout de segurança (30 segundos)
+      const timeoutId = setTimeout(() => {
+        if (isMounted) {
+          console.error("[v0] Timeout ao carregar vincular entrada")
+          setIsLoading(false)
+          toast({
+            title: "Erro",
+            description: "O carregamento está demorando muito. Tente recarregar a página.",
+            variant: "destructive",
+          })
+        }
+      }, 30000)
+
       try {
-        if (!user) return
+        if (!user) {
+          setIsLoading(false)
+          clearTimeout(timeoutId)
+          return
+        }
 
         setIsLoading(true)
 
@@ -51,28 +72,54 @@ export default function VincularEntradaPage() {
             try {
               const entradaCompleta = await getMerchandiseEntryById(entrada.id)
               return entradaCompleta
-            } catch (error) {
+            } catch (error: any) {
               console.error(`[v0] Error fetching items for entry ${entrada.id}:`, error)
+              // Se for erro de auth, propagar
+              if (isAuthError(error)) {
+                throw error
+              }
               return { ...entrada, items: [] } as MerchandiseEntryWithItems
             }
           })
         )
         
         setEntradas(entradasComItens)
-      } catch (error) {
+      } catch (error: any) {
         console.error("[v0] Error fetching data:", error)
-        toast({
-          title: "Erro",
-          description: "Não foi possível carregar os dados",
-          variant: "destructive",
-        })
+        
+        // Verificar se é erro de autenticação
+        if (isAuthError(error)) {
+          toast({
+            title: "Sessão expirada",
+            description: "Sua sessão expirou. Por favor, faça login novamente.",
+            variant: "destructive",
+          })
+          setTimeout(() => {
+            router.push("/login")
+          }, 2000)
+        } else {
+          toast({
+            title: "Erro",
+            description: "Não foi possível carregar os dados. Tente novamente.",
+            variant: "destructive",
+          })
+        }
+        
+        setEntradas([])
       } finally {
-        setIsLoading(false)
+        if (isMounted) {
+          setIsLoading(false)
+        }
+        clearTimeout(timeoutId)
       }
     }
 
     fetchData()
-  }, [user, toast])
+    
+    return () => {
+      isMounted = false
+    }
+  }, [user, toast, router])
 
   const handleSelectEntry = async (entryId: string) => {
     try {

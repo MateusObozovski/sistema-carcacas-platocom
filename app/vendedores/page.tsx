@@ -1,38 +1,62 @@
 "use client"
 
+import type React from "react"
 import { useState, useEffect } from "react"
 import { ProtectedRoute } from "@/components/protected-route"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useAuth } from "@/lib/auth-context"
-import { getVendedores, getOrders, type DatabaseVendedor } from "@/lib/supabase/database"
+import { getVendedores, getOrders, getVendedorDetalhes, type DatabaseVendedor, type VendedorDetalhes } from "@/lib/supabase/database"
 import Link from "next/link"
-import { Search, TrendingUp, TrendingDown } from "lucide-react"
+import { Search, TrendingUp, TrendingDown, Plus, Info } from "lucide-react"
 import { Progress } from "@/components/ui/progress"
+import { Button } from "@/components/ui/button"
+import { Label } from "@/components/ui/label"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { useToast } from "@/hooks/use-toast"
 
 export default function VendedoresPage() {
   const { user } = useAuth()
+  const { toast } = useToast()
   const [searchTerm, setSearchTerm] = useState("")
   const [vendedores, setVendedores] = useState<DatabaseVendedor[]>([])
   const [orders, setOrders] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [showCreateDialog, setShowCreateDialog] = useState(false)
+  const [isCreating, setIsCreating] = useState(false)
+  const [newVendedorForm, setNewVendedorForm] = useState({
+    name: "",
+    email: "",
+    password: "",
+  })
+  const [selectedVendedorId, setSelectedVendedorId] = useState<string | null>(null)
+  const [vendedorDetalhes, setVendedorDetalhes] = useState<VendedorDetalhes | null>(null)
+  const [isLoadingDetalhes, setIsLoadingDetalhes] = useState(false)
+  const [showDetalhesDialog, setShowDetalhesDialog] = useState(false)
+
+  const loadVendedores = async () => {
+    try {
+      setIsLoading(true)
+      const [vendedoresData, ordersData] = await Promise.all([getVendedores(), getOrders()])
+      setVendedores(vendedoresData)
+      setOrders(ordersData)
+    } catch (error) {
+      console.error("[v0] Error loading vendedores:", error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        setIsLoading(true)
-        const [vendedoresData, ordersData] = await Promise.all([getVendedores(), getOrders()])
-        setVendedores(vendedoresData)
-        setOrders(ordersData)
-      } catch (error) {
-        console.error("[v0] Error loading vendedores:", error)
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
-    loadData()
+    loadVendedores()
   }, [])
 
   const formatCurrency = (value: number) => {
@@ -63,6 +87,90 @@ export default function VendedoresPage() {
   const debitoTotal = vendedoresComDados.reduce((acc, v) => acc + v.debitoTotal, 0)
   const carcacasTotal = vendedoresComDados.reduce((acc, v) => acc + v.carcacasPendentes, 0)
 
+  const handleOpenDetalhes = async (vendedorId: string) => {
+    setSelectedVendedorId(vendedorId)
+    setShowDetalhesDialog(true)
+    setIsLoadingDetalhes(true)
+    setVendedorDetalhes(null)
+
+    try {
+      const detalhes = await getVendedorDetalhes(vendedorId)
+      setVendedorDetalhes(detalhes)
+    } catch (error) {
+      console.error("[v0] Error loading vendedor detalhes:", error)
+      toast({
+        title: "Erro",
+        description: "Não foi possível carregar os detalhes do vendedor",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoadingDetalhes(false)
+    }
+  }
+
+  const handleCloseDetalhes = () => {
+    setShowDetalhesDialog(false)
+    setSelectedVendedorId(null)
+    setVendedorDetalhes(null)
+  }
+
+  const handleCreateVendedor = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsCreating(true)
+
+    try {
+      const response = await fetch("/api/create-user", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          ...newVendedorForm,
+          role: "Vendedor", // Fixo como Vendedor
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        toast({
+          title: "Erro",
+          description: data.error || "Não foi possível criar o vendedor",
+          variant: "destructive",
+        })
+        setIsCreating(false)
+        return
+      }
+
+      toast({
+        title: "Sucesso",
+        description: "Vendedor criado com sucesso!",
+      })
+
+      // Limpar formulário e fechar dialog
+      setNewVendedorForm({
+        name: "",
+        email: "",
+        password: "",
+      })
+      setShowCreateDialog(false)
+
+      // Recarregar lista de vendedores após um pequeno delay
+      setTimeout(() => {
+        loadVendedores()
+      }, 1000)
+    } catch (error: any) {
+      console.error("[v0] Error creating vendedor:", error)
+      toast({
+        title: "Erro",
+        description: "Não foi possível criar o vendedor",
+        variant: "destructive",
+      })
+    } finally {
+      setIsCreating(false)
+    }
+  }
+
   if (isLoading) {
     return (
       <ProtectedRoute allowedRoles={["admin", "Gerente", "Coordenador"]}>
@@ -77,9 +185,15 @@ export default function VendedoresPage() {
     <ProtectedRoute allowedRoles={["admin", "Gerente", "Coordenador"]}>
       <div className="p-6">
         <div className="space-y-6">
-          <div>
-            <h2 className="text-3xl font-bold tracking-tight">Vendedores</h2>
-            <p className="text-muted-foreground">Gerencie e visualize o desempenho dos vendedores</p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-3xl font-bold tracking-tight">Vendedores</h2>
+              <p className="text-muted-foreground">Gerencie e visualize o desempenho dos vendedores</p>
+            </div>
+            <Button onClick={() => setShowCreateDialog(true)} className="gap-2">
+              <Plus className="h-4 w-4" />
+              Novo Vendedor
+            </Button>
           </div>
 
           <div className="grid gap-4 md:grid-cols-3">
@@ -208,9 +322,20 @@ export default function VendedoresPage() {
                           </div>
                         </TableCell>
                         <TableCell className="text-right">
-                          <Link href={`/vendedores/${vendedor.id}`} className="text-sm text-primary hover:underline">
-                            Ver detalhes
-                          </Link>
+                          <div className="flex items-center justify-end gap-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleOpenDetalhes(vendedor.id)}
+                              className="text-sm"
+                            >
+                              <Info className="h-4 w-4 mr-1" />
+                              Detalhes
+                            </Button>
+                            <Link href={`/vendedores/${vendedor.id}`} className="text-sm text-primary hover:underline">
+                              Ver página
+                            </Link>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))
@@ -220,6 +345,134 @@ export default function VendedoresPage() {
             </CardContent>
           </Card>
         </div>
+
+        <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+          <DialogContent className="sm:max-w-[500px]">
+            <DialogHeader>
+              <DialogTitle>Cadastrar Novo Vendedor</DialogTitle>
+              <DialogDescription>Preencha os dados do novo vendedor do sistema</DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleCreateVendedor} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="newVendedorName">Nome Completo</Label>
+                <Input
+                  id="newVendedorName"
+                  value={newVendedorForm.name}
+                  onChange={(e) => setNewVendedorForm({ ...newVendedorForm, name: e.target.value })}
+                  required
+                  minLength={2}
+                  disabled={isCreating}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="newVendedorEmail">Email</Label>
+                <Input
+                  id="newVendedorEmail"
+                  type="email"
+                  value={newVendedorForm.email}
+                  onChange={(e) => setNewVendedorForm({ ...newVendedorForm, email: e.target.value })}
+                  required
+                  disabled={isCreating}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="newVendedorPassword">Senha</Label>
+                <Input
+                  id="newVendedorPassword"
+                  type="password"
+                  value={newVendedorForm.password}
+                  onChange={(e) => setNewVendedorForm({ ...newVendedorForm, password: e.target.value })}
+                  required
+                  minLength={6}
+                  disabled={isCreating}
+                />
+                <p className="text-xs text-muted-foreground">Mínimo de 6 caracteres</p>
+              </div>
+
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setShowCreateDialog(false)
+                    setNewVendedorForm({
+                      name: "",
+                      email: "",
+                      password: "",
+                    })
+                  }}
+                  disabled={isCreating}
+                >
+                  Cancelar
+                </Button>
+                <Button type="submit" disabled={isCreating}>
+                  {isCreating ? "Criando..." : "Criar Vendedor"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={showDetalhesDialog} onOpenChange={handleCloseDetalhes}>
+          <DialogContent className="sm:max-w-[600px]">
+            <DialogHeader>
+              <DialogTitle>Detalhes do Vendedor</DialogTitle>
+              <DialogDescription>Estatísticas detalhadas do vendedor selecionado</DialogDescription>
+            </DialogHeader>
+            {isLoadingDetalhes ? (
+              <div className="py-8 text-center text-muted-foreground">Carregando detalhes...</div>
+            ) : vendedorDetalhes ? (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Nome</Label>
+                  <p className="text-base">{vendedorDetalhes.nome}</p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Total de Clientes</Label>
+                  <p className="text-2xl font-bold">{vendedorDetalhes.totalClientes}</p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Pedidos por Status</Label>
+                  <div className="space-y-1">
+                    {Object.entries(vendedorDetalhes.pedidosPorStatus).length > 0 ? (
+                      Object.entries(vendedorDetalhes.pedidosPorStatus).map(([status, count]) => (
+                        <div key={status} className="flex justify-between items-center py-1 border-b border-border last:border-0">
+                          <span className="text-sm text-muted-foreground">{status}</span>
+                          <span className="text-sm font-medium">{count}</span>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-sm text-muted-foreground">Nenhum pedido encontrado</p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Valor de Carcaças Pendentes</Label>
+                  <p className="text-2xl font-bold text-red-500">
+                    {formatCurrency(vendedorDetalhes.valorCarcacasPendentes)}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Soma monetária total das carcaças pendentes
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="py-8 text-center text-muted-foreground">
+                Não foi possível carregar os detalhes
+              </div>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={handleCloseDetalhes}>
+                Fechar
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </ProtectedRoute>
   )

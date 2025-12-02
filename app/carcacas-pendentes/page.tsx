@@ -25,10 +25,13 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { createBrowserClient } from "@supabase/ssr"
+import { isAuthError } from "@/lib/utils"
+import { useRouter } from "next/navigation"
 
 export default function CarcacasPendentesPage() {
   const { user } = useAuth()
   const { toast } = useToast()
+  const router = useRouter()
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFiltro, setStatusFiltro] = useState<"todos" | "aguardando" | "atrasado">("todos")
   const [vendedorFiltro, setVendedorFiltro] = useState<string>("todos")
@@ -44,11 +47,26 @@ export default function CarcacasPendentesPage() {
   )
 
   useEffect(() => {
+    let isMounted = true
     const fetchCarcacas = async () => {
+      // Timeout de segurança (30 segundos)
+      const timeoutId = setTimeout(() => {
+        if (isMounted) {
+          console.error("[v0] Timeout ao carregar carcaças pendentes")
+          setLoading(false)
+          toast({
+            title: "Erro",
+            description: "O carregamento está demorando muito. Tente recarregar a página.",
+            variant: "destructive",
+          })
+        }
+      }, 30000)
+
       try {
         setLoading(true)
         if (!user?.id) {
           setLoading(false)
+          clearTimeout(timeoutId)
           return
         }
 
@@ -85,7 +103,30 @@ export default function CarcacasPendentesPage() {
 
         if (error) {
           console.error("[v0] Error fetching carcacas:", error)
+          
+          // Verificar se é erro de autenticação
+          if (isAuthError(error)) {
+            toast({
+              title: "Sessão expirada",
+              description: "Sua sessão expirou. Por favor, faça login novamente.",
+              variant: "destructive",
+            })
+            setTimeout(() => {
+              router.push("/login")
+            }, 2000)
+          } else {
+            toast({
+              title: "Erro",
+              description: "Não foi possível carregar as carcaças pendentes. Tente novamente.",
+              variant: "destructive",
+            })
+          }
+          
+          setCarcacasPendentes([])
+          setVendedores([])
+          setClientes([])
           setLoading(false)
+          clearTimeout(timeoutId)
           return
         }
 
@@ -98,14 +139,18 @@ export default function CarcacasPendentesPage() {
 
         // Carregar vendedores (para admins)
         if (user?.role === "admin" || user?.role === "Gerente" || user?.role === "Coordenador") {
-          const { data: vendedoresData } = await supabase
+          const { data: vendedoresData, error: vendedoresError } = await supabase
             .from("profiles")
             .select("id, nome")
             .eq("role", "Vendedor")
             .eq("ativo", true)
             .order("nome")
 
-          setVendedores(vendedoresData || [])
+          if (vendedoresError && isAuthError(vendedoresError)) {
+            console.error("[v0] Auth error loading vendedores:", vendedoresError)
+          } else {
+            setVendedores(vendedoresData || [])
+          }
         }
 
         // Carregar clientes únicos das carcaças pendentes
@@ -122,15 +167,46 @@ export default function CarcacasPendentesPage() {
           }
         })
         setClientes(Array.from(clientesUnicos.values()).sort((a, b) => a.nome.localeCompare(b.nome)))
-      } catch (err) {
+      } catch (err: any) {
         console.error("[v0] Error in fetchCarcacas:", err)
+        
+        if (!isMounted) return
+        
+        // Verificar se é erro de autenticação
+        if (isAuthError(err)) {
+          toast({
+            title: "Sessão expirada",
+            description: "Sua sessão expirou. Por favor, faça login novamente.",
+            variant: "destructive",
+          })
+          setTimeout(() => {
+            router.push("/login")
+          }, 2000)
+        } else {
+          toast({
+            title: "Erro",
+            description: "Não foi possível carregar os dados. Tente recarregar a página.",
+            variant: "destructive",
+          })
+        }
+        
+        setCarcacasPendentes([])
+        setVendedores([])
+        setClientes([])
       } finally {
-        setLoading(false)
+        if (isMounted) {
+          setLoading(false)
+        }
+        clearTimeout(timeoutId)
       }
     }
 
     fetchCarcacas()
-  }, [user?.id, user?.role, supabase])
+    
+    return () => {
+      isMounted = false
+    }
+  }, [user?.id, user?.role, supabase, toast, router])
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat("pt-BR", {

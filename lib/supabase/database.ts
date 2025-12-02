@@ -475,6 +475,98 @@ export async function getVendedorById(id: string) {
   } as DatabaseVendedor
 }
 
+// Vendedor detalhes (estatísticas detalhadas para modal)
+export interface VendedorDetalhes {
+  nome: string
+  totalClientes: number
+  pedidosPorStatus: Record<string, number>
+  valorCarcacasPendentes: number
+}
+
+export async function getVendedorDetalhes(vendedorId: string): Promise<VendedorDetalhes> {
+  const supabase = createClient()
+
+  // Buscar nome do vendedor
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("nome")
+    .eq("id", vendedorId)
+    .single()
+
+  if (profileError) {
+    console.error("[v0] Error fetching vendedor profile:", profileError)
+    throw profileError
+  }
+
+  // Total de clientes
+  const { count: totalClientes, error: clientsError } = await supabase
+    .from("clients")
+    .select("*", { count: "exact", head: true })
+    .eq("vendedor_id", vendedorId)
+    .eq("ativo", true)
+
+  if (clientsError) {
+    console.error("[v0] Error counting clients:", clientsError)
+    throw clientsError
+  }
+
+  // Pedidos por status
+  const { data: orders, error: ordersError } = await supabase
+    .from("orders")
+    .select("status")
+    .eq("vendedor_id", vendedorId)
+
+  if (ordersError) {
+    console.error("[v0] Error fetching orders:", ordersError)
+    throw ordersError
+  }
+
+  // Agrupar pedidos por status
+  const pedidosPorStatus: Record<string, number> = {}
+  if (orders) {
+    orders.forEach((order) => {
+      const status = order.status || "Sem Status"
+      pedidosPorStatus[status] = (pedidosPorStatus[status] || 0) + 1
+    })
+  }
+
+  // Valor monetário de carcaças pendentes
+  // Buscar order_items com debito_carcaca > 0 e calcular valor total
+  const { data: orderItems, error: itemsError } = await supabase
+    .from("order_items")
+    .select(`
+      debito_carcaca,
+      preco_unitario,
+      orders!inner(
+        vendedor_id,
+        status
+      )
+    `)
+    .gt("debito_carcaca", 0)
+    .eq("tipo_venda", "Base de Troca")
+    .eq("orders.vendedor_id", vendedorId)
+    .in("orders.status", ["Aguardando Devolução", "Atrasado", "Concluído"])
+
+  if (itemsError) {
+    console.error("[v0] Error fetching order items:", itemsError)
+    throw itemsError
+  }
+
+  // Calcular valor total: debito_carcaca * preco_unitario
+  const valorCarcacasPendentes =
+    orderItems?.reduce((sum, item) => {
+      const valor = (item.debito_carcaca || 0) * (item.preco_unitario || 0)
+      return sum + valor
+    }, 0) || 0
+
+  return {
+    nome: profile?.nome || "Desconhecido",
+    totalClientes: totalClientes || 0,
+    pedidosPorStatus,
+    valorCarcacasPendentes,
+  }
+}
+
 // Clients with stats
 export interface DatabaseClientWithStats extends DatabaseClient {
   debitoTotal: number

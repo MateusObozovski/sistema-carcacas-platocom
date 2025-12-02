@@ -10,12 +10,10 @@ import {
   ShoppingCart,
   Package,
   FileText,
-  UserCircle,
   Building2,
   BarChart3,
   Box,
   Settings,
-  Upload,
   ArrowRightLeft,
   PackageCheck,
 } from "lucide-react"
@@ -88,22 +86,10 @@ export function DashboardNav({ isOpen, onClose }: DashboardNavProps) {
       roles: ["admin", "Gerente"],
     },
     {
-      title: "Importar Produtos",
-      href: "/importar-produtos",
-      icon: Upload,
-      roles: ["admin", "Gerente", "Coordenador", "Vendedor"],
-    },
-    {
       title: "Gestão de Usuários",
       href: "/usuarios",
       icon: Settings,
       roles: ["admin"],
-    },
-    {
-      title: "Meu Perfil",
-      href: "/perfil",
-      icon: UserCircle,
-      roles: ["admin", "Gerente", "Coordenador", "Vendedor"],
     },
     {
       title: "Entrada de Mercadoria",

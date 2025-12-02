@@ -20,9 +20,12 @@ import {
   isProductUsedInOrders,
   type DatabaseProduct,
 } from "@/lib/supabase/database"
+import { isAuthError } from "@/lib/utils"
+import { useRouter } from "next/navigation"
 
 export default function ProdutosPage() {
   const { toast } = useToast()
+  const router = useRouter()
   const [products, setProducts] = useState<DatabaseProduct[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
@@ -45,37 +48,95 @@ export default function ProdutosPage() {
   })
 
   useEffect(() => {
-    loadProducts()
-  }, [])
-
-  const loadProducts = async () => {
-    try {
-      setLoading(true)
-      const data = await getAllProducts()
-      setProducts(data)
-      
-      // Verificar quais produtos estão sendo usados em pedidos
-      const usageMap: Record<string, boolean> = {}
-      for (const product of data) {
-        try {
-          usageMap[product.id] = await isProductUsedInOrders(product.id)
-        } catch (error) {
-          console.error(`[v0] Error checking usage for product ${product.id}:`, error)
-          usageMap[product.id] = false
+    let isMounted = true
+    
+    const loadProducts = async () => {
+      // Timeout de segurança (30 segundos)
+      const timeoutId = setTimeout(() => {
+        if (isMounted) {
+          console.error("[v0] Timeout ao carregar produtos")
+          setLoading(false)
+          toast({
+            title: "Erro",
+            description: "O carregamento está demorando muito. Tente recarregar a página.",
+            variant: "destructive",
+          })
         }
+      }, 30000)
+
+      try {
+        setLoading(true)
+        const data = await getAllProducts()
+        
+        if (!isMounted) {
+          clearTimeout(timeoutId)
+          return
+        }
+        
+        setProducts(data)
+        
+        // Verificar quais produtos estão sendo usados em pedidos
+        const usageMap: Record<string, boolean> = {}
+        for (const product of data) {
+          if (!isMounted) break
+          
+          try {
+            usageMap[product.id] = await isProductUsedInOrders(product.id)
+          } catch (error: any) {
+            console.error(`[v0] Error checking usage for product ${product.id}:`, error)
+            // Se for erro de auth, não continuar verificando
+            if (isAuthError(error)) {
+              throw error
+            }
+            usageMap[product.id] = false
+          }
+        }
+        
+        if (isMounted) {
+          setProductUsageMap(usageMap)
+        }
+      } catch (error: any) {
+        console.error("[v0] Error loading products:", error)
+        
+        if (!isMounted) {
+          clearTimeout(timeoutId)
+          return
+        }
+        
+        // Verificar se é erro de autenticação
+        if (isAuthError(error)) {
+          toast({
+            title: "Sessão expirada",
+            description: "Sua sessão expirou. Por favor, faça login novamente.",
+            variant: "destructive",
+          })
+          setTimeout(() => {
+            router.push("/login")
+          }, 2000)
+        } else {
+          toast({
+            title: "Erro",
+            description: "Não foi possível carregar os produtos. Tente novamente.",
+            variant: "destructive",
+          })
+        }
+        
+        setProducts([])
+        setProductUsageMap({})
+      } finally {
+        if (isMounted) {
+          setLoading(false)
+        }
+        clearTimeout(timeoutId)
       }
-      setProductUsageMap(usageMap)
-    } catch (error) {
-      console.error("[v0] Error loading products:", error)
-      toast({
-        title: "Erro",
-        description: "Não foi possível carregar os produtos",
-        variant: "destructive",
-      })
-    } finally {
-      setLoading(false)
     }
-  }
+
+    loadProducts()
+    
+    return () => {
+      isMounted = false
+    }
+  }, [toast, router])
 
   const marcas = Array.from(new Set(products.map((p) => p.marca))).sort()
   const tipos = Array.from(new Set(products.map((p) => p.tipo))).sort()

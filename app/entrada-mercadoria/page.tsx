@@ -32,6 +32,8 @@ import {
 } from "@/lib/supabase/database"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { isAuthError } from "@/lib/utils"
+import { useRouter } from "next/navigation"
 
 interface EntryItem {
   produtoId: string
@@ -42,6 +44,7 @@ interface EntryItem {
 export default function EntradaMercadoriaPage() {
   const { user } = useAuth()
   const { toast } = useToast()
+  const router = useRouter()
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFiltro, setStatusFiltro] = useState<"todos" | "Pendente" | "Concluída">("todos")
   const [entradas, setEntradas] = useState<DatabaseMerchandiseEntry[]>([])
@@ -69,9 +72,27 @@ export default function EntradaMercadoriaPage() {
   })
 
   useEffect(() => {
+    let isMounted = true
     const fetchData = async () => {
+      // Timeout de segurança (30 segundos)
+      const timeoutId = setTimeout(() => {
+        if (isMounted) {
+          console.error("[v0] Timeout ao carregar entrada de mercadoria")
+          setIsLoading(false)
+          toast({
+            title: "Erro",
+            description: "O carregamento está demorando muito. Tente recarregar a página.",
+            variant: "destructive",
+          })
+        }
+      }, 30000)
+
       try {
-        if (!user) return
+        if (!user) {
+          setIsLoading(false)
+          clearTimeout(timeoutId)
+          return
+        }
 
         setIsLoading(true)
 
@@ -86,20 +107,44 @@ export default function EntradaMercadoriaPage() {
         // Buscar produtos
         const produtosData = await getProducts()
         setProdutos(produtosData || [])
-      } catch (error) {
+      } catch (error: any) {
         console.error("[v0] Error fetching data:", error)
-        toast({
-          title: "Erro",
-          description: "Não foi possível carregar os dados",
-          variant: "destructive",
-        })
+        
+        // Verificar se é erro de autenticação
+        if (isAuthError(error)) {
+          toast({
+            title: "Sessão expirada",
+            description: "Sua sessão expirou. Por favor, faça login novamente.",
+            variant: "destructive",
+          })
+          setTimeout(() => {
+            router.push("/login")
+          }, 2000)
+        } else {
+          toast({
+            title: "Erro",
+            description: "Não foi possível carregar os dados. Tente novamente.",
+            variant: "destructive",
+          })
+        }
+        
+        setEntradas([])
+        setClientes([])
+        setProdutos([])
       } finally {
-        setIsLoading(false)
+        if (isMounted) {
+          setIsLoading(false)
+        }
+        clearTimeout(timeoutId)
       }
     }
 
     fetchData()
-  }, [user, toast])
+    
+    return () => {
+      isMounted = false
+    }
+  }, [user, toast, router])
 
   const loadRelatorios = async () => {
     try {

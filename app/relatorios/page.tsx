@@ -23,6 +23,8 @@ import { useToast } from "@/hooks/use-toast"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { StatusBadge } from "@/components/status-badge"
+import { isAuthError } from "@/lib/utils"
+import { useRouter } from "next/navigation"
 
 // Helper function to map database status to StatusBadge status
 function mapStatusToBadge(status: string): "aguardando" | "atrasado" | "devolvida" | "perda-total" {
@@ -36,6 +38,7 @@ function mapStatusToBadge(status: string): "aguardando" | "atrasado" | "devolvid
 export default function RelatoriosPage() {
   const { user } = useAuth()
   const { toast } = useToast()
+  const router = useRouter()
   const [orders, setOrders] = useState<any[]>([])
   const [clients, setClients] = useState<any[]>([])
   const [vendedores, setVendedores] = useState<any[]>([])
@@ -44,11 +47,26 @@ export default function RelatoriosPage() {
   const [vendedorFiltro, setVendedorFiltro] = useState<string>("todos")
 
   useEffect(() => {
+    let isMounted = true
     const loadData = async () => {
+      // Timeout de segurança (30 segundos)
+      const timeoutId = setTimeout(() => {
+        if (isMounted) {
+          console.error("[v0] Timeout ao carregar relatórios")
+          setIsLoading(false)
+          toast({
+            title: "Erro",
+            description: "O carregamento está demorando muito. Tente recarregar a página.",
+            variant: "destructive",
+          })
+        }
+      }, 30000)
+
       try {
         setIsLoading(true)
         if (!user) {
           setIsLoading(false)
+          clearTimeout(timeoutId)
           return
         }
         
@@ -60,18 +78,44 @@ export default function RelatoriosPage() {
         setOrders(ordersData || [])
         setClients(clientsData || [])
         setVendedores(vendedoresData || [])
-      } catch (error) {
+      } catch (error: any) {
         console.error("[v0] Error loading relatorios data:", error)
+        
+        // Verificar se é erro de autenticação
+        if (isAuthError(error)) {
+          toast({
+            title: "Sessão expirada",
+            description: "Sua sessão expirou. Por favor, faça login novamente.",
+            variant: "destructive",
+          })
+          setTimeout(() => {
+            router.push("/login")
+          }, 2000)
+        } else {
+          toast({
+            title: "Erro",
+            description: "Não foi possível carregar os relatórios. Tente novamente.",
+            variant: "destructive",
+          })
+        }
+        
         setOrders([])
         setClients([])
         setVendedores([])
       } finally {
-        setIsLoading(false)
+        if (isMounted) {
+          setIsLoading(false)
+        }
+        clearTimeout(timeoutId)
       }
     }
 
     loadData()
-  }, [user])
+    
+    return () => {
+      isMounted = false
+    }
+  }, [user, toast, router])
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat("pt-BR", {

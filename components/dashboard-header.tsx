@@ -22,8 +22,10 @@ export function DashboardHeader({ onMenuClick }: DashboardHeaderProps) {
   const { user, logout } = useAuth()
   const router = useRouter()
 
-  const handleLogout = () => {
-    logout()
+  const handleLogout = async () => {
+    await logout()
+    // Aguardar um pouco para garantir limpeza completa
+    await new Promise(resolve => setTimeout(resolve, 100))
     router.push("/login")
   }
 
