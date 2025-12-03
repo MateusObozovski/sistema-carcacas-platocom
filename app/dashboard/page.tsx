@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { StatusBadge } from "@/components/status-badge"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
+import { useRouter } from "next/navigation"
 
 // Helper function to map database status to StatusBadge status
 function mapStatusToBadge(status: string): "aguardando" | "atrasado" | "devolvida" | "perda-total" {
@@ -23,10 +24,38 @@ function mapStatusToBadge(status: string): "aguardando" | "atrasado" | "devolvid
 
 export default function DashboardPage() {
   const { user } = useAuth()
+  const router = useRouter()
   const [vendedores, setVendedores] = useState<DatabaseVendedor[]>([])
   const [orders, setOrders] = useState<any[]>([])
   const [clients, setClients] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
+
+  // Função de navegação segura baseada em permissões
+  const handleNavigate = (route: string) => {
+    if (!user) return
+
+    // Mapeamento de rotas para roles permitidas
+    const routePermissions: Record<string, string[]> = {
+      "/carcacas-pendentes": ["admin", "Gerente", "Coordenador", "Vendedor"],
+      "/vendedores": ["admin", "Gerente", "Coordenador"],
+      "/pedidos": ["admin", "Gerente", "Coordenador", "Vendedor"],
+    }
+
+    const allowedRoles = routePermissions[route]
+    if (!allowedRoles) {
+      console.warn(`[v0] Rota ${route} não possui mapeamento de permissões`)
+      return
+    }
+
+    // Verificar se o usuário tem permissão para acessar a rota
+    if (!allowedRoles.includes(user.role)) {
+      console.log(`[v0] Usuário com role ${user.role} não tem permissão para acessar ${route}`)
+      return
+    }
+
+    // Navegar para a rota
+    router.push(route)
+  }
 
   useEffect(() => {
     const loadData = async () => {
@@ -122,24 +151,28 @@ export default function DashboardPage() {
                 value={formatCurrency(debitoTotal)}
                 icon={DollarSign}
                 description="Soma de todos os débitos"
+                onClick={() => handleNavigate("/carcacas-pendentes")}
               />
               <StatCard
                 title="Carcaças Pendentes"
                 value={carcacasPendentesTotal}
                 icon={Package}
                 description="Total aguardando devolução"
+                onClick={() => handleNavigate("/carcacas-pendentes")}
               />
               <StatCard
                 title="Vendedores Ativos"
                 value={vendedores.length}
                 icon={Users}
                 description="Total de vendedores"
+                onClick={() => handleNavigate("/vendedores")}
               />
               <StatCard
                 title="Pedidos Atrasados"
                 value={pedidosAtrasados}
                 icon={AlertTriangle}
                 description="Mais de 30 dias"
+                onClick={() => handleNavigate("/pedidos")}
               />
             </div>
 
@@ -257,12 +290,14 @@ export default function DashboardPage() {
                 value={formatCurrency(vendedorStats.debitoTotal)}
                 icon={DollarSign}
                 description="Total de débitos pendentes"
+                onClick={() => handleNavigate("/carcacas-pendentes")}
               />
               <StatCard
                 title="Carcaças Pendentes"
                 value={vendedorStats.carcacasPendentes}
                 icon={Package}
                 description="Aguardando devolução"
+                onClick={() => handleNavigate("/carcacas-pendentes")}
               />
               <StatCard
                 title="Meus Clientes"
@@ -275,6 +310,7 @@ export default function DashboardPage() {
                 value={pedidosAtrasados}
                 icon={AlertTriangle}
                 description="Mais de 30 dias"
+                onClick={() => handleNavigate("/pedidos")}
               />
             </div>
 

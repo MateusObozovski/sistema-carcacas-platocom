@@ -8,7 +8,6 @@ import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useAuth } from "@/lib/auth-context"
 import { getVendedores, getOrders, getVendedorDetalhes, type DatabaseVendedor, type VendedorDetalhes } from "@/lib/supabase/database"
-import Link from "next/link"
 import { Search, TrendingUp, TrendingDown, Plus, Info } from "lucide-react"
 import { Progress } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
@@ -322,20 +321,15 @@ export default function VendedoresPage() {
                           </div>
                         </TableCell>
                         <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleOpenDetalhes(vendedor.id)}
-                              className="text-sm"
-                            >
-                              <Info className="h-4 w-4 mr-1" />
-                              Detalhes
-                            </Button>
-                            <Link href={`/vendedores/${vendedor.id}`} className="text-sm text-primary hover:underline">
-                              Ver página
-                            </Link>
-                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleOpenDetalhes(vendedor.id)}
+                            className="text-sm"
+                          >
+                            <Info className="h-4 w-4 mr-1" />
+                            Detalhes
+                          </Button>
                         </TableCell>
                       </TableRow>
                     ))
