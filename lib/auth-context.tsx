@@ -31,6 +31,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const creatingProfile = useRef(false);
   // Flag para evitar processamento duplicado entre getSession e onAuthStateChange
   const isInitializing = useRef(false);
+  // Flag para garantir que limpeza de storage execute apenas uma vez
+  const storageCleaned = useRef(false);
+  // Ref para debounce do onAuthStateChange
+  const authStateChangeTimeout = useRef<NodeJS.Timeout | null>(null);
+  // Ref para rastrear se usuário já foi carregado (evita processar INITIAL_SESSION repetidamente)
+  const userLoaded = useRef(false);
+  // Ref para rastrear o ID do usuário atual (evita processar SIGNED_IN para o mesmo usuário)
+  const currentUserId = useRef<string | null>(null);
 
   // Timeout de segurança para não ficar travado em "Carregando..." para sempre
   useEffect(() => {
@@ -42,20 +50,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Limpeza de storage baseada em versão para evitar dados incompatíveis após deploys
+  // Executa apenas uma vez e preserva sessão do Supabase
   useEffect(() => {
     try {
       if (typeof window === "undefined") return;
+      
+      // Executar apenas uma vez
+      if (storageCleaned.current) {
+        return;
+      }
 
       const storedVersion = localStorage.getItem("app_version");
 
       if (storedVersion !== APP_VERSION) {
+        // Preservar chaves do Supabase (todas as chaves que começam com 'sb-')
+        const supabaseKeys: Record<string, string> = {};
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith("sb-")) {
+            supabaseKeys[key] = localStorage.getItem(key) || "";
+          }
+        }
+
+        // Limpar storage
         localStorage.clear();
         sessionStorage.clear();
+
+        // Restaurar chaves do Supabase
+        Object.entries(supabaseKeys).forEach(([key, value]) => {
+          localStorage.setItem(key, value);
+        });
+
+        // Salvar nova versão
         localStorage.setItem("app_version", APP_VERSION);
-        console.log(`[v0] Storage resetado para versao ${APP_VERSION}`);
+        storageCleaned.current = true;
+        console.log(`[v0] Storage resetado para versao ${APP_VERSION} (sessão Supabase preservada)`);
+      } else {
+        // Mesmo que a versão esteja correta, marcar como limpo para evitar re-execução
+        storageCleaned.current = true;
       }
     } catch (error) {
       console.error("[v0] Erro ao limpar storage por versao:", error);
+      storageCleaned.current = true; // Marcar como limpo mesmo em caso de erro para evitar loop
     }
   }, []);
 
@@ -164,6 +200,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 email: profile.email,
                 role: userRole,
               });
+              userLoaded.current = true;
+              currentUserId.current = profile.id;
               console.log(
                 "[v0] User profile loaded - role:",
                 userRole,
@@ -186,6 +224,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               if (mounted) {
                 await supabase.auth.signOut();
                 setUser(null);
+                userLoaded.current = false;
+                currentUserId.current = null;
               }
             }
           } catch (profileErr) {
@@ -205,79 +245,111 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     };
 
-    // Configurar listener de mudanças de autenticação
+    // Configurar listener de mudanças de autenticação com debounce
     const {
       data: { subscription: authSubscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
-      // Prevenir processamento se já estiver inicializando
-      if (isInitializing.current && event === "SIGNED_IN") {
-        console.log(
-          "[v0] Initial session check in progress, skipping SIGNED_IN event"
-        );
-        return;
+      // Limpar timeout anterior se existir
+      if (authStateChangeTimeout.current) {
+        clearTimeout(authStateChangeTimeout.current);
       }
 
-      if (!mounted) {
-        return;
-      }
-
-      console.log("[v0] Auth state changed:", event);
-
-      if (event === "SIGNED_OUT") {
-        if (mounted) {
-          setUser(null);
+      // Debounce de 500ms para evitar processamento duplicado
+      authStateChangeTimeout.current = setTimeout(async () => {
+        // Prevenir processamento se já estiver inicializando
+        if (isInitializing.current && event === "SIGNED_IN") {
+          console.log(
+            "[v0] Initial session check in progress, skipping SIGNED_IN event"
+          );
+          return;
         }
-        return;
-      }
 
-      if (session?.user && event === "SIGNED_IN") {
-        try {
-          const { data: profile, error: profileError } = await supabase
-            .from("profiles")
-            .select("*")
-            .eq("id", session.user.id)
-            .maybeSingle();
+        // Ignorar INITIAL_SESSION se já houver usuário carregado (evita loop)
+        if (event === "INITIAL_SESSION" && userLoaded.current) {
+          console.log(
+            "[v0] INITIAL_SESSION event ignored - user already loaded"
+          );
+          return;
+        }
 
-          if (!mounted) {
+        if (!mounted) {
+          return;
+        }
+
+        console.log("[v0] Auth state changed:", event);
+
+        if (event === "SIGNED_OUT") {
+          if (mounted) {
+            setUser(null);
+            userLoaded.current = false;
+            currentUserId.current = null;
+          }
+          return;
+        }
+
+        if (session?.user && event === "SIGNED_IN") {
+          // Ignorar SIGNED_IN se já houver usuário carregado e for o mesmo usuário
+          // Isso previne loops causados por hot reload ou re-montagem do componente
+          if (userLoaded.current && currentUserId.current === session.user.id) {
+            console.log(
+              "[v0] SIGNED_IN event ignored - same user already loaded:",
+              session.user.id
+            );
             return;
           }
 
-          if (profile) {
-            const userRole = profile.role as UserRole;
-            setUser({
-              id: profile.id,
-              name: profile.nome,
-              email: profile.email,
-              role: userRole,
-            });
-            console.log(
-              "[v0] User profile updated - role:",
-              userRole,
-              "profile.role:",
-              profile.role
-            );
-          } else {
-            if (profileError) {
-              console.error(
-                "[v0] Profile fetch error after SIGNED_IN:",
-                profileError.message
+          try {
+            const { data: profile, error: profileError } = await supabase
+              .from("profiles")
+              .select("*")
+              .eq("id", session.user.id)
+              .maybeSingle();
+
+            if (!mounted) {
+              return;
+            }
+
+            if (profile) {
+              const userRole = profile.role as UserRole;
+              setUser({
+                id: profile.id,
+                name: profile.nome,
+                email: profile.email,
+                role: userRole,
+              });
+              userLoaded.current = true;
+              currentUserId.current = profile.id;
+              console.log(
+                "[v0] User profile updated - role:",
+                userRole,
+                "profile.role:",
+                profile.role
               );
             } else {
-              console.warn(
-                "[v0] No profile found after SIGNED_IN event for user:",
-                session.user.id
-              );
+              if (profileError) {
+                console.error(
+                  "[v0] Profile fetch error after SIGNED_IN:",
+                  profileError.message
+                );
+              } else {
+                console.warn(
+                  "[v0] No profile found after SIGNED_IN event for user:",
+                  session.user.id
+                );
+              }
+              // Se não conseguimos obter profile após SIGNED_IN, força logout para permitir novo login limpo
+              if (mounted) {
+                await supabase.auth.signOut();
+                setUser(null);
+                userLoaded.current = false;
+                currentUserId.current = null;
+              }
             }
-            // Se não conseguimos obter profile após SIGNED_IN, força logout para permitir novo login limpo
-            if (mounted) {
-              await supabase.auth.signOut();
-              setUser(null);
-            }
+          } catch (error) {
+            console.error("[v0] Error in auth state change handler:", error);
           }
-        } catch (error) {
-          console.error("[v0] Error in auth state change handler:", error);
         }
-      }
+      }, 500); // Debounce de 500ms
     });
 
     subscription = authSubscription;
@@ -289,6 +361,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       mounted = false;
       isInitializing.current = false;
+      userLoaded.current = false;
+      currentUserId.current = null;
+      if (authStateChangeTimeout.current) {
+        clearTimeout(authStateChangeTimeout.current);
+      }
       if (subscription) {
         subscription.unsubscribe();
       }
@@ -354,6 +431,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               email: createdProfile.email,
               role: userRole,
             });
+            userLoaded.current = true;
+            currentUserId.current = createdProfile.id;
             console.log(
               "[v0] Profile created and login complete - role:",
               userRole
@@ -364,6 +443,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // Não foi possível criar profile, força logout para limpar sessão inválida
           await supabase.auth.signOut();
           setUser(null);
+          userLoaded.current = false;
+          currentUserId.current = null;
           return false;
         }
 
@@ -375,6 +456,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             email: profile.email,
             role: userRole,
           });
+          userLoaded.current = true;
+          currentUserId.current = profile.id;
           console.log(
             "[v0] Login complete - role:",
             userRole,
@@ -405,6 +488,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               email: createdProfile.email,
               role: userRole,
             });
+            userLoaded.current = true;
+            currentUserId.current = createdProfile.id;
             console.log(
               "[v0] Profile created and login complete - role:",
               userRole
@@ -417,6 +502,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           );
           await supabase.auth.signOut();
           setUser(null);
+          userLoaded.current = false;
+          currentUserId.current = null;
           return false;
         }
       }
@@ -432,6 +519,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       // Limpar estado local primeiro
       setUser(null);
+      userLoaded.current = false;
+      currentUserId.current = null;
 
       // Aguardar signOut completar
       const { error } = await supabase.auth.signOut();

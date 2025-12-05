@@ -10,6 +10,14 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Plus, Search, Edit, Trash2, Filter, ChevronDown, ChevronUp } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import {
@@ -32,7 +40,7 @@ export default function ProdutosPage() {
   const [filterMarca, setFilterMarca] = useState<string>("all")
   const [filterTipo, setFilterTipo] = useState<string>("all")
   const [filterCategoria, setFilterCategoria] = useState<string>("all")
-  const [showAddForm, setShowAddForm] = useState(false)
+  const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [editingProduct, setEditingProduct] = useState<DatabaseProduct | null>(null)
   const [showFilters, setShowFilters] = useState(false)
   const [productUsageMap, setProductUsageMap] = useState<Record<string, boolean>>({})
@@ -47,95 +55,59 @@ export default function ProdutosPage() {
     ativo: true,
   })
 
-  useEffect(() => {
-    let isMounted = true
-    
-    const loadProducts = async () => {
-      // Timeout de segurança (30 segundos)
-      const timeoutId = setTimeout(() => {
-        if (isMounted) {
-          console.error("[v0] Timeout ao carregar produtos")
-          setLoading(false)
-          toast({
-            title: "Erro",
-            description: "O carregamento está demorando muito. Tente recarregar a página.",
-            variant: "destructive",
-          })
-        }
-      }, 30000)
-
-      try {
-        setLoading(true)
-        const data = await getAllProducts()
-        
-        if (!isMounted) {
-          clearTimeout(timeoutId)
-          return
-        }
-        
-        setProducts(data)
-        
-        // Verificar quais produtos estão sendo usados em pedidos
-        const usageMap: Record<string, boolean> = {}
-        for (const product of data) {
-          if (!isMounted) break
-          
-          try {
-            usageMap[product.id] = await isProductUsedInOrders(product.id)
-          } catch (error: any) {
-            console.error(`[v0] Error checking usage for product ${product.id}:`, error)
-            // Se for erro de auth, não continuar verificando
-            if (isAuthError(error)) {
-              throw error
-            }
-            usageMap[product.id] = false
+  const loadProducts = async () => {
+    try {
+      setLoading(true)
+      const data = await getAllProducts()
+      
+      setProducts(data)
+      
+      // Verificar quais produtos estão sendo usados em pedidos
+      const usageMap: Record<string, boolean> = {}
+      for (const product of data) {
+        try {
+          usageMap[product.id] = await isProductUsedInOrders(product.id)
+        } catch (error: any) {
+          console.error(`[v0] Error checking usage for product ${product.id}:`, error)
+          // Se for erro de auth, não continuar verificando
+          if (isAuthError(error)) {
+            throw error
           }
+          usageMap[product.id] = false
         }
-        
-        if (isMounted) {
-          setProductUsageMap(usageMap)
-        }
-      } catch (error: any) {
-        console.error("[v0] Error loading products:", error)
-        
-        if (!isMounted) {
-          clearTimeout(timeoutId)
-          return
-        }
-        
-        // Verificar se é erro de autenticação
-        if (isAuthError(error)) {
-          toast({
-            title: "Sessão expirada",
-            description: "Sua sessão expirou. Por favor, faça login novamente.",
-            variant: "destructive",
-          })
-          setTimeout(() => {
-            router.push("/login")
-          }, 2000)
-        } else {
-          toast({
-            title: "Erro",
-            description: "Não foi possível carregar os produtos. Tente novamente.",
-            variant: "destructive",
-          })
-        }
-        
-        setProducts([])
-        setProductUsageMap({})
-      } finally {
-        if (isMounted) {
-          setLoading(false)
-        }
-        clearTimeout(timeoutId)
       }
+      
+      setProductUsageMap(usageMap)
+    } catch (error: any) {
+      console.error("[v0] Error loading products:", error)
+      
+      // Verificar se é erro de autenticação
+      if (isAuthError(error)) {
+        toast({
+          title: "Sessão expirada",
+          description: "Sua sessão expirou. Por favor, faça login novamente.",
+          variant: "destructive",
+        })
+        setTimeout(() => {
+          router.push("/login")
+        }, 2000)
+      } else {
+        toast({
+          title: "Erro",
+          description: "Não foi possível carregar os produtos. Tente novamente.",
+          variant: "destructive",
+        })
+      }
+      
+      setProducts([])
+      setProductUsageMap({})
+    } finally {
+      setLoading(false)
     }
+  }
 
+  useEffect(() => {
     loadProducts()
-    
-    return () => {
-      isMounted = false
-    }
   }, [toast, router])
 
   const marcas = Array.from(new Set(products.map((p) => p.marca))).sort()
@@ -245,7 +217,8 @@ export default function ProdutosPage() {
         desconto_maximo_bt: "",
         ativo: true,
       })
-      setShowAddForm(false)
+      setShowCreateDialog(false)
+      setEditingProduct(null)
     } catch (error: any) {
       console.error("[v0] Error saving product:", error)
       toast({
@@ -267,7 +240,7 @@ export default function ProdutosPage() {
       desconto_maximo_bt: product.desconto_maximo_bt.toString(),
       ativo: product.ativo,
     })
-    setShowAddForm(true)
+    setShowCreateDialog(true)
   }
 
   const handleDelete = async (productId: string) => {
@@ -365,158 +338,167 @@ export default function ProdutosPage() {
                 Gerencie o catálogo de produtos por Marca, Tipo e Categoria
               </p>
             </div>
-            <Button onClick={() => setShowAddForm(!showAddForm)} className="gap-2 w-full md:w-auto">
+            <Button onClick={() => setShowCreateDialog(true)} className="gap-2 w-full md:w-auto">
               <Plus className="h-4 w-4" />
-              {showAddForm ? "Cancelar" : "Novo Produto"}
+              Novo Produto
             </Button>
           </div>
         </div>
 
-        {showAddForm && (
-          <Card className="mb-4 md:mb-6">
-            <CardHeader>
-              <CardTitle>{editingProduct ? "Editar Produto" : "Novo Produto"}</CardTitle>
-              <CardDescription>Preencha os dados do produto</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="nome">Nome do Produto *</Label>
-                    <Input
-                      id="nome"
-                      placeholder="Ex: Kit Embreagem Mercedes 1620"
-                      value={formData.nome}
-                      onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
-                      required
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="marca">Marca *</Label>
-                    <Select
-                      value={formData.marca}
-                      onValueChange={(value) => setFormData({ ...formData, marca: value })}
-                      required
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecione a marca" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Mercedes">Mercedes</SelectItem>
-                        <SelectItem value="Ford">Ford</SelectItem>
-                        <SelectItem value="Scania">Scania</SelectItem>
-                        <SelectItem value="Volvo">Volvo</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="tipo">Tipo Veículo *</Label>
-                    <Select
-                      value={formData.tipo}
-                      onValueChange={(value) => setFormData({ ...formData, tipo: value })}
-                      required
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecione o tipo" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Caminhão">Caminhão</SelectItem>
-                        <SelectItem value="Ônibus">Ônibus</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="categoria">Categoria *</Label>
-                    <Select
-                      value={formData.categoria}
-                      onValueChange={(value) => setFormData({ ...formData, categoria: value })}
-                      required
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="kit">Kit</SelectItem>
-                        <SelectItem value="plato">Platô</SelectItem>
-                        <SelectItem value="mancal">Mancal</SelectItem>
-                        <SelectItem value="disco">Disco</SelectItem>
-                        <SelectItem value="outros">Outros</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="preco_base">Preço Base (R$) *</Label>
-                    <Input
-                      id="preco_base"
-                      type="number"
-                      step="0.01"
-                      min="0.01"
-                      value={formData.preco_base}
-                      onChange={(e) => setFormData({ ...formData, preco_base: e.target.value })}
-                      required
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="desconto_maximo_bt">Desconto Máximo (%) *</Label>
-                    <Input
-                      id="desconto_maximo_bt"
-                      type="number"
-                      min="0"
-                      max="100"
-                      value={formData.desconto_maximo_bt}
-                      onChange={(e) => setFormData({ ...formData, desconto_maximo_bt: e.target.value })}
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="ativo"
-                    checked={formData.ativo}
-                    onChange={(e) => setFormData({ ...formData, ativo: e.target.checked })}
-                    className="h-4 w-4"
+        <Dialog open={showCreateDialog} onOpenChange={(open) => {
+          setShowCreateDialog(open)
+          if (!open) {
+            setEditingProduct(null)
+            setFormData({
+              nome: "",
+              marca: "",
+              tipo: "",
+              categoria: "kit",
+              preco_base: "",
+              desconto_maximo_bt: "",
+              ativo: true,
+            })
+          }
+        }}>
+          <DialogContent className="sm:max-w-[600px]">
+            <DialogHeader>
+              <DialogTitle>{editingProduct ? "Editar Produto" : "Novo Produto"}</DialogTitle>
+              <DialogDescription>Preencha os dados do produto</DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="nome">Nome do Produto *</Label>
+                  <Input
+                    id="nome"
+                    placeholder="Ex: Kit Embreagem Mercedes 1620"
+                    value={formData.nome}
+                    onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
+                    required
                   />
-                  <Label htmlFor="ativo">Produto Ativo</Label>
                 </div>
 
-                <div className="flex flex-col gap-2 md:flex-row">
-                  <Button type="submit" className="w-full md:w-auto">
-                    {editingProduct ? "Salvar Alterações" : "Cadastrar Produto"}
-                  </Button>
-                  {editingProduct && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="w-full md:w-auto bg-transparent"
-                      onClick={() => {
-                        setEditingProduct(null)
-                        setFormData({
-                          nome: "",
-                          marca: "",
-                          tipo: "",
-                          categoria: "kit",
-                          preco_base: "",
-                          desconto_maximo_bt: "",
-                          ativo: true,
-                        })
-                        setShowAddForm(false)
-                      }}
-                    >
-                      Cancelar
-                    </Button>
-                  )}
+                <div className="space-y-2">
+                  <Label htmlFor="marca">Marca *</Label>
+                  <Select
+                    value={formData.marca}
+                    onValueChange={(value) => setFormData({ ...formData, marca: value })}
+                    required
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione a marca" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Mercedes">Mercedes</SelectItem>
+                      <SelectItem value="Ford">Ford</SelectItem>
+                      <SelectItem value="Scania">Scania</SelectItem>
+                      <SelectItem value="Volvo">Volvo</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
-              </form>
-            </CardContent>
-          </Card>
-        )}
+
+                <div className="space-y-2">
+                  <Label htmlFor="tipo">Tipo Veículo *</Label>
+                  <Select
+                    value={formData.tipo}
+                    onValueChange={(value) => setFormData({ ...formData, tipo: value })}
+                    required
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione o tipo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Caminhão">Caminhão</SelectItem>
+                      <SelectItem value="Ônibus">Ônibus</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="categoria">Categoria *</Label>
+                  <Select
+                    value={formData.categoria}
+                    onValueChange={(value) => setFormData({ ...formData, categoria: value })}
+                    required
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="kit">Kit</SelectItem>
+                      <SelectItem value="plato">Platô</SelectItem>
+                      <SelectItem value="mancal">Mancal</SelectItem>
+                      <SelectItem value="disco">Disco</SelectItem>
+                      <SelectItem value="outros">Outros</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="preco_base">Preço Base (R$) *</Label>
+                  <Input
+                    id="preco_base"
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    value={formData.preco_base}
+                    onChange={(e) => setFormData({ ...formData, preco_base: e.target.value })}
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="desconto_maximo_bt">Desconto Máximo (%) *</Label>
+                  <Input
+                    id="desconto_maximo_bt"
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={formData.desconto_maximo_bt}
+                    onChange={(e) => setFormData({ ...formData, desconto_maximo_bt: e.target.value })}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="ativo"
+                  checked={formData.ativo}
+                  onChange={(e) => setFormData({ ...formData, ativo: e.target.checked })}
+                  className="h-4 w-4"
+                />
+                <Label htmlFor="ativo">Produto Ativo</Label>
+              </div>
+
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setShowCreateDialog(false)
+                    setEditingProduct(null)
+                    setFormData({
+                      nome: "",
+                      marca: "",
+                      tipo: "",
+                      categoria: "kit",
+                      preco_base: "",
+                      desconto_maximo_bt: "",
+                      ativo: true,
+                    })
+                  }}
+                >
+                  Cancelar
+                </Button>
+                <Button type="submit">
+                  {editingProduct ? "Salvar Alterações" : "Cadastrar Produto"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
 
         <Card>
           <CardHeader>
