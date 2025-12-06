@@ -544,15 +544,24 @@ export async function generatePedidoIndividualPDF(
     // Tabela de Itens
     if (pedido.order_items && pedido.order_items.length > 0) {
       const tableData = pedido.order_items.map((item) => {
-        const valorDesconto = calculateDescontoValue(item)
+        // Calcular preço original (antes do desconto)
+        // Se preco_unitario já tem desconto aplicado, calcular o original
+        const precoOriginal = item.desconto_percentual > 0 && item.desconto_percentual < 100
+          ? item.preco_unitario / (1 - item.desconto_percentual / 100)
+          : item.preco_unitario
+        
+        // Calcular valor do desconto: (preço original - preço unitário) * quantidade
+        const valorDescontoPorUnidade = precoOriginal - item.preco_unitario
+        const valorDescontoTotal = valorDescontoPorUnidade * item.quantidade
+        
         const subtotal = item.preco_final * item.quantidade
 
         return [
           item.produto_nome,
           item.quantidade.toString(),
-          formatCurrency(item.preco_unitario),
+          formatCurrency(precoOriginal),
           `${item.desconto_percentual.toFixed(2)}%`,
-          formatCurrency(valorDesconto),
+          formatCurrency(valorDescontoTotal),
           formatCurrency(subtotal),
         ]
       })
