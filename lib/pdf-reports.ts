@@ -427,78 +427,119 @@ export async function generatePedidoIndividualPDF(
     const doc = new jsPDF("portrait", "mm", "a4")
     await addHeader(doc, "Pedido de Venda")
 
-    let yPos = 70
+    // Posição inicial após a linha divisória (Y=25 + margem)
+    let yPos = 35
+    const pageWidth = doc.internal.pageSize.getWidth()
+    const leftColX = 20
+    const rightColX = pageWidth / 2 + 10
+    const colWidth = (pageWidth - 40) / 2 - 10
 
-    // Seção: Dados do Cliente
-    doc.setFontSize(14)
-    doc.setTextColor(BRAND_BLUE)
-    doc.text("DADOS DO CLIENTE", 20, yPos)
-    yPos += 8
+    // Função auxiliar para converter hex para RGB
+    const hexToRgb = (hex: string): [number, number, number] => {
+      const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
+      return result
+        ? [
+            parseInt(result[1], 16),
+            parseInt(result[2], 16),
+            parseInt(result[3], 16),
+          ]
+        : [0, 0, 0]
+    }
 
-    doc.setFontSize(10)
-    doc.setTextColor(0, 0, 0)
-    doc.text(`Nome/Razão Social: ${cliente.nome}`, 20, yPos)
+    const brandBlueRgb = hexToRgb(BRAND_BLUE)
+    const grayLightRgb = hexToRgb("#f3f4f6")
+
+    // Seção: Dados do Cliente (Coluna Esquerda)
+    doc.setFontSize(11)
+    doc.setFont("helvetica", "bold")
+    doc.setTextColor(brandBlueRgb[0], brandBlueRgb[1], brandBlueRgb[2])
+    doc.text("DADOS DO CLIENTE", leftColX, yPos)
     yPos += 6
+
+    // Caixa de fundo cinza claro para os dados do cliente
+    doc.setFillColor(grayLightRgb[0], grayLightRgb[1], grayLightRgb[2])
+    doc.rect(leftColX, yPos - 2, colWidth, 40, "F")
+
+    doc.setFontSize(9)
+    doc.setFont("helvetica", "normal")
+    doc.setTextColor(0, 0, 0)
+    let clientY = yPos + 4
+
+    doc.text(`Nome/Razão Social:`, leftColX + 2, clientY)
+    const clienteNomeLines = doc.splitTextToSize(cliente.nome, colWidth - 4)
+    doc.text(clienteNomeLines, leftColX + 2, clientY + 4)
+    clientY += 4 + (clienteNomeLines.length * 4)
 
     if (cliente.cnpj) {
       const cnpjFormatado = cliente.cnpj.length === 14
         ? `${cliente.cnpj.slice(0, 2)}.${cliente.cnpj.slice(2, 5)}.${cliente.cnpj.slice(5, 8)}/${cliente.cnpj.slice(8, 12)}-${cliente.cnpj.slice(12)}`
         : cliente.cnpj
-      doc.text(`CNPJ: ${cnpjFormatado}`, 20, yPos)
-      yPos += 6
+      doc.text(`CNPJ: ${cnpjFormatado}`, leftColX + 2, clientY)
+      clientY += 5
     }
 
     if (cliente.email) {
-      doc.text(`Email: ${cliente.email}`, 20, yPos)
-      yPos += 6
+      doc.text(`Email: ${cliente.email}`, leftColX + 2, clientY)
+      clientY += 5
     }
 
     if (cliente.telefone) {
-      doc.text(`Telefone: ${cliente.telefone}`, 20, yPos)
-      yPos += 6
+      doc.text(`Telefone: ${cliente.telefone}`, leftColX + 2, clientY)
+      clientY += 5
     }
 
     if (cliente.endereco) {
-      doc.text(`Endereço: ${cliente.endereco}`, 20, yPos)
-      yPos += 6
+      doc.text(`Endereço:`, leftColX + 2, clientY)
+      const enderecoLines = doc.splitTextToSize(cliente.endereco, colWidth - 4)
+      doc.text(enderecoLines, leftColX + 2, clientY + 4)
+      clientY += 4 + (enderecoLines.length * 4)
     }
 
-    yPos += 5
+    // Seção: Dados do Pedido e Vendedor (Coluna Direita)
+    let rightY = yPos - 2
+    doc.setFontSize(11)
+    doc.setFont("helvetica", "bold")
+    doc.setTextColor(brandBlueRgb[0], brandBlueRgb[1], brandBlueRgb[2])
+    doc.text("INFORMAÇÕES DO PEDIDO", rightColX, rightY)
+    rightY += 6
 
-    // Seção: Dados do Vendedor
-    doc.setFontSize(14)
-    doc.setTextColor(BRAND_BLUE)
-    doc.text("DADOS DO VENDEDOR", 20, yPos)
-    yPos += 8
+    // Caixa de fundo cinza claro para os dados do pedido
+    doc.setFillColor(grayLightRgb[0], grayLightRgb[1], grayLightRgb[2])
+    doc.rect(rightColX, rightY - 2, colWidth, 40, "F")
 
-    doc.setFontSize(10)
+    doc.setFontSize(9)
+    doc.setFont("helvetica", "normal")
     doc.setTextColor(0, 0, 0)
-    doc.text(`Nome: ${vendedor.nome}`, 20, yPos)
-    yPos += 6
+    let pedidoY = rightY + 4
+
+    doc.text(`Número: ${pedido.numero_pedido}`, rightColX + 2, pedidoY)
+    pedidoY += 5
+    doc.text(`Data: ${formatDateTime(pedido.data_venda)}`, rightColX + 2, pedidoY)
+    pedidoY += 5
+    doc.text(`Tipo: ${pedido.tipo_venda}`, rightColX + 2, pedidoY)
+    pedidoY += 5
+    doc.text(`Status: ${pedido.status}`, rightColX + 2, pedidoY)
+    pedidoY += 8
+
+    // Dados do Vendedor
+    doc.setFontSize(11)
+    doc.setFont("helvetica", "bold")
+    doc.setTextColor(brandBlueRgb[0], brandBlueRgb[1], brandBlueRgb[2])
+    doc.text("VENDEDOR", rightColX, pedidoY)
+    pedidoY += 6
+
+    doc.setFontSize(9)
+    doc.setFont("helvetica", "normal")
+    doc.setTextColor(0, 0, 0)
+    doc.text(`Nome: ${vendedor.nome}`, rightColX + 2, pedidoY)
+    pedidoY += 5
 
     if (vendedor.email) {
-      doc.text(`Email: ${vendedor.email}`, 20, yPos)
-      yPos += 6
+      doc.text(`Email: ${vendedor.email}`, rightColX + 2, pedidoY)
     }
 
-    yPos += 5
-
-    // Seção: Informações do Pedido
-    doc.setFontSize(14)
-    doc.setTextColor(BRAND_BLUE)
-    doc.text("INFORMAÇÕES DO PEDIDO", 20, yPos)
-    yPos += 8
-
-    doc.setFontSize(10)
-    doc.setTextColor(0, 0, 0)
-    doc.text(`Número do Pedido: ${pedido.numero_pedido}`, 20, yPos)
-    yPos += 6
-    doc.text(`Data da Venda: ${formatDateTime(pedido.data_venda)}`, 20, yPos)
-    yPos += 6
-    doc.text(`Tipo de Venda: ${pedido.tipo_venda}`, 20, yPos)
-    yPos += 6
-    doc.text(`Status: ${pedido.status}`, 20, yPos)
-    yPos += 10
+    // Posição Y para a tabela (após as caixas de informações)
+    yPos = Math.max(clientY, pedidoY) + 10
 
     // Tabela de Itens
     if (pedido.order_items && pedido.order_items.length > 0) {
@@ -516,28 +557,42 @@ export async function generatePedidoIndividualPDF(
         ]
       })
 
+      // Usar brandBlueRgb já definido no início da função
+
       autoTable(doc, {
         ...getDefaultTableStyles(),
         startY: yPos,
         head: [["Produto", "Qtd", "Preço Unit.", "Desconto %", "Valor Desconto", "Subtotal"]],
         body: tableData,
+        headStyles: {
+          fillColor: brandBlueRgb,
+          textColor: 255,
+          fontStyle: "bold",
+          fontSize: 10,
+        },
       })
 
       yPos = (doc as any).lastAutoTable.finalY + 10
     }
 
     // Totais
-    const subtotal = pedido.order_items?.reduce(
-      (sum, item) => sum + item.preco_final * item.quantidade,
-      0,
-    ) || 0
+    // Subtotal = soma dos preços originais (antes do desconto) * quantidade
+    const subtotal = pedido.order_items?.reduce((sum, item) => {
+      const precoOriginal = item.preco_unitario / (1 - (item.desconto_percentual || 0) / 100)
+      return sum + precoOriginal * item.quantidade
+    }, 0) || 0
 
+    // Total de descontos = soma dos valores de desconto
     const totalDescontos = pedido.order_items?.reduce(
       (sum, item) => sum + calculateDescontoValue(item),
       0,
     ) || 0
 
-    const totalGeral = pedido.valor_total || 0
+    // Total geral = subtotal - descontos (ou usar o valor_total do pedido se estiver correto)
+    const totalGeralCalculado = subtotal - totalDescontos
+    const totalGeral = pedido.valor_total && Math.abs(pedido.valor_total - totalGeralCalculado) < 0.01 
+      ? pedido.valor_total 
+      : totalGeralCalculado
 
     doc.setFontSize(11)
     doc.text(`Subtotal: ${formatCurrency(subtotal)}`, 150, yPos, { align: "right" })
@@ -547,17 +602,21 @@ export async function generatePedidoIndividualPDF(
 
     doc.setFontSize(12)
     doc.setFont("helvetica", "bold")
-    doc.setTextColor(BRAND_ORANGE)
+    const brandOrangeRgb = hexToRgb(BRAND_ORANGE)
+    doc.setTextColor(brandOrangeRgb[0], brandOrangeRgb[1], brandOrangeRgb[2])
     doc.text(`TOTAL GERAL: ${formatCurrency(totalGeral)}`, 150, yPos, { align: "right" })
 
     // Observações (se existir)
     if (pedido.observacoes) {
       yPos += 15
       doc.setFontSize(11)
-      doc.setTextColor(BRAND_BLUE)
+      doc.setFont("helvetica", "bold")
+      const brandBlueRgb = hexToRgb(BRAND_BLUE)
+      doc.setTextColor(brandBlueRgb[0], brandBlueRgb[1], brandBlueRgb[2])
       doc.text("OBSERVAÇÕES:", 20, yPos)
       yPos += 7
       doc.setFontSize(10)
+      doc.setFont("helvetica", "normal")
       doc.setTextColor(0, 0, 0)
       const splitObservacoes = doc.splitTextToSize(pedido.observacoes, 170)
       doc.text(splitObservacoes, 20, yPos)

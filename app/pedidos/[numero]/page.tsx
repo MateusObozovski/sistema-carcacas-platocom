@@ -190,47 +190,47 @@ export default function PedidoDetalhePage() {
   return (
     <ProtectedRoute>
       <div className="mx-auto max-w-4xl space-y-6">
-              <div className="flex items-center gap-4">
-                <Button variant="ghost" size="icon" asChild>
-                  <Link href="/pedidos">
-                    <ArrowLeft className="h-4 w-4" />
-                  </Link>
-                </Button>
-                <div className="flex-1">
-                  <h2 className="text-3xl font-bold tracking-tight">Pedido {pedido.numero_pedido}</h2>
-                  <p className="text-muted-foreground">Detalhes completos do pedido</p>
-                </div>
-                <div className="flex gap-2">
-                  <Button variant="outline" onClick={handleGerarPDF}>
-                    <FileText className="mr-2 h-4 w-4" />
-                    Gerar PDF do Pedido
-                  </Button>
-                  {tipoVendaBaseTroca &&
-                    (pedido.status === "Aguardando Devolução" || pedido.status === "Atrasado") && (
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button>
-                            <CheckCircle className="mr-2 h-4 w-4" />
-                            Registrar Devolução
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Confirmar devolução de carcaça</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              Tem certeza que deseja registrar a devolução da carcaça do pedido {pedido.numero_pedido}? O
-                              {pedido.debito_carcaca || 0} carcaça(s) será(ão) devolvida(s) automaticamente.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                            <AlertDialogAction onClick={handleRegistrarDevolucao}>Confirmar Devolução</AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    )}
-                </div>
-              </div>
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+          <Button variant="ghost" size="icon" asChild>
+            <Link href="/pedidos">
+              <ArrowLeft className="h-4 w-4" />
+            </Link>
+          </Button>
+          <div className="flex-1 min-w-0">
+            <h2 className="text-3xl font-bold tracking-tight">Pedido {pedido.numero_pedido}</h2>
+            <p className="text-muted-foreground">Detalhes completos do pedido</p>
+          </div>
+          <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+            <Button variant="outline" onClick={handleGerarPDF} className="flex-1 sm:flex-initial">
+              <FileText className="mr-2 h-4 w-4" />
+              Gerar PDF do Pedido
+            </Button>
+            {tipoVendaBaseTroca &&
+              (pedido.status === "Aguardando Devolução" || pedido.status === "Atrasado") && (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button className="flex-1 sm:flex-initial">
+                      <CheckCircle className="mr-2 h-4 w-4" />
+                      Registrar Devolução
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Confirmar devolução de carcaça</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Tem certeza que deseja registrar a devolução da carcaça do pedido {pedido.numero_pedido}? O
+                        {pedido.debito_carcaca || 0} carcaça(s) será(ão) devolvida(s) automaticamente.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                      <AlertDialogAction onClick={handleRegistrarDevolucao}>Confirmar Devolução</AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              )}
+          </div>
+        </div>
 
               <div className="grid gap-6 md:grid-cols-2">
                 <Card>
@@ -282,33 +282,74 @@ export default function PedidoDetalhePage() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3">
-                    {pedido.order_items?.map((item: any, index: number) => (
-                      <div key={item.id} className={index > 0 ? "border-t border-border pt-3" : ""}>
-                        <div className="mb-2">
-                          <p className="text-sm font-medium">{item.produto_nome} x{item.quantidade}</p>
-                        </div>
-                        <div className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">Preço Unitário</span>
-                          <span className="font-medium">{formatCurrency(item.preco_unitario)}</span>
-                        </div>
-                        {item.desconto_percentual > 0 && (
-                          <div className="flex justify-between text-sm">
-                            <span className="text-muted-foreground">Desconto ({item.desconto_percentual}%)</span>
-                            <span className="font-medium text-green-500">
-                              - {formatCurrency((item.preco_unitario * item.desconto_percentual) / 100)}
-                            </span>
+                    {pedido.order_items?.map((item: any, index: number) => {
+                      // Calcular preço original (antes do desconto)
+                      const precoOriginal = item.desconto_percentual > 0
+                        ? item.preco_unitario / (1 - item.desconto_percentual / 100)
+                        : item.preco_unitario
+                      const valorDescontoPorItem = (precoOriginal - item.preco_unitario) * item.quantidade
+                      const subtotalItem = item.preco_final * item.quantidade
+
+                      return (
+                        <div key={item.id} className={index > 0 ? "border-t border-border pt-3" : ""}>
+                          <div className="mb-2">
+                            <p className="text-sm font-medium">{item.produto_nome} x{item.quantidade}</p>
                           </div>
-                        )}
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Subtotal</span>
-                          <span className="font-medium">{formatCurrency(item.preco_final * item.quantidade)}</span>
+                          <div className="flex justify-between text-sm">
+                            <span className="text-muted-foreground">Preço Unitário</span>
+                            <span className="font-medium">{formatCurrency(precoOriginal)}</span>
+                          </div>
+                          {item.desconto_percentual > 0 && (
+                            <div className="flex justify-between text-sm">
+                              <span className="text-muted-foreground">Desconto ({item.desconto_percentual}%)</span>
+                              <span className="font-medium text-green-500">
+                                - {formatCurrency(valorDescontoPorItem)}
+                              </span>
+                            </div>
+                          )}
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Subtotal</span>
+                            <span className="font-medium">{formatCurrency(subtotalItem)}</span>
+                          </div>
                         </div>
-                      </div>
-                    ))}
-                    <div className="flex justify-between border-t border-border pt-3">
-                      <span className="font-semibold">Valor Total</span>
-                      <span className="text-xl font-bold">{formatCurrency(pedido.valor_total || 0)}</span>
-                    </div>
+                      )
+                    })}
+                    {(() => {
+                      // Calcular totais gerais
+                      const subtotalGeral = pedido.order_items?.reduce((sum: number, item: any) => {
+                        const precoOriginal = item.desconto_percentual > 0
+                          ? item.preco_unitario / (1 - item.desconto_percentual / 100)
+                          : item.preco_unitario
+                        return sum + precoOriginal * item.quantidade
+                      }, 0) || 0
+
+                      const totalDescontos = pedido.order_items?.reduce((sum: number, item: any) => {
+                        const precoOriginal = item.desconto_percentual > 0
+                          ? item.preco_unitario / (1 - item.desconto_percentual / 100)
+                          : item.preco_unitario
+                        const valorDesconto = (precoOriginal - item.preco_unitario) * item.quantidade
+                        return sum + valorDesconto
+                      }, 0) || 0
+
+                      return (
+                        <>
+                          <div className="flex justify-between border-t border-border pt-3">
+                            <span className="text-muted-foreground">Subtotal</span>
+                            <span className="font-medium">{formatCurrency(subtotalGeral)}</span>
+                          </div>
+                          {totalDescontos > 0 && (
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Total de Descontos</span>
+                              <span className="font-medium text-green-500">- {formatCurrency(totalDescontos)}</span>
+                            </div>
+                          )}
+                          <div className="flex justify-between border-t border-border pt-3">
+                            <span className="font-semibold">Valor Total</span>
+                            <span className="text-xl font-bold">{formatCurrency(pedido.valor_total || 0)}</span>
+                          </div>
+                        </>
+                      )
+                    })()}
                   </div>
                 </CardContent>
               </Card>
