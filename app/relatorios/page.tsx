@@ -18,7 +18,14 @@ import { useAuth } from "@/lib/auth-context"
 import { getOrders, getClients, getVendedores } from "@/lib/supabase/database"
 import { Download, FileText, TrendingUp, Calendar } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { useToast } from "@/hooks/use-toast"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -45,6 +52,8 @@ export default function RelatoriosPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [periodoFiltro, setPeriodoFiltro] = useState<"7dias" | "30dias" | "90dias" | "todos">("30dias")
   const [vendedorFiltro, setVendedorFiltro] = useState<string>("todos")
+  const [dataInicio, setDataInicio] = useState<string>("")
+  const [dataFim, setDataFim] = useState<string>("")
 
   useEffect(() => {
     let isMounted = true
@@ -78,6 +87,11 @@ export default function RelatoriosPage() {
         setOrders(ordersData || [])
         setClients(clientsData || [])
         setVendedores(vendedoresData || [])
+        
+        // Se for vendedor, travar o filtro de vendedor no próprio ID
+        if (user.role === "Vendedor") {
+          setVendedorFiltro(user.id)
+        }
       } catch (error: any) {
         console.error("[v0] Error loading relatorios data:", error)
         
@@ -136,6 +150,26 @@ export default function RelatoriosPage() {
   }
 
   const filtrarPorPeriodo = (dataVenda: string) => {
+    const data = new Date(dataVenda)
+    
+    // Se há filtros de data específicos, usar eles (prioridade)
+    if (dataInicio || dataFim) {
+      if (dataInicio) {
+        const inicio = new Date(dataInicio)
+        inicio.setHours(0, 0, 0, 0)
+        if (data < inicio) return false
+      }
+      
+      if (dataFim) {
+        const fim = new Date(dataFim)
+        fim.setHours(23, 59, 59, 999)
+        if (data > fim) return false
+      }
+      
+      return true
+    }
+    
+    // Caso contrário, usar período pré-definido
     const dias = getDaysPending(dataVenda)
     switch (periodoFiltro) {
       case "7dias":
@@ -223,16 +257,53 @@ export default function RelatoriosPage() {
     }
   })
 
-  const handleExportarRelatorio = (tipo: string) => {
-    toast({
-      title: "Relatório exportado!",
-      description: `O relatório de ${tipo} foi exportado com sucesso.`,
-    })
+  const handleExportarPDF = async (tipo: "vendas" | "carcacas" | "pedidos-pendentes") => {
+    try {
+      const { generateVendasCompletoPDF, generateCarcacasPendentesPDF, generatePedidosPendentesPDF } = await import("@/lib/pdf-reports")
+      
+      const filters = {
+        dataInicio: dataInicio ? new Date(dataInicio) : null,
+        dataFim: dataFim ? new Date(dataFim) : null,
+        vendedorFiltro: vendedorFiltro,
+        periodoFiltro: periodoFiltro,
+      }
+
+      switch (tipo) {
+        case "vendas":
+          await generateVendasCompletoPDF(orders, filters, clients, vendedores)
+          toast({
+            title: "Sucesso",
+            description: "Relatório de Vendas Completo gerado com sucesso!",
+          })
+          break
+        case "carcacas":
+          await generateCarcacasPendentesPDF(orders, filters, clients, vendedores)
+          toast({
+            title: "Sucesso",
+            description: "Relatório de Carcaças Pendentes gerado com sucesso!",
+          })
+          break
+        case "pedidos-pendentes":
+          await generatePedidosPendentesPDF(orders, filters, clients, vendedores)
+          toast({
+            title: "Sucesso",
+            description: "Relatório de Pedidos Pendentes gerado com sucesso!",
+          })
+          break
+      }
+    } catch (error: any) {
+      console.error("[PDF] Erro ao gerar relatório:", error)
+      toast({
+        title: "Erro",
+        description: error.message || "Não foi possível gerar o relatório PDF",
+        variant: "destructive",
+      })
+    }
   }
 
   if (isLoading) {
     return (
-      <ProtectedRoute allowedRoles={["admin", "Gerente", "Coordenador"]}>
+      <ProtectedRoute allowedRoles={["admin", "Gerente", "Coordenador", "Vendedor"]}>
         <div className="p-6">
           <div className="text-center text-muted-foreground">Carregando...</div>
         </div>
@@ -241,7 +312,7 @@ export default function RelatoriosPage() {
   }
 
   return (
-    <ProtectedRoute allowedRoles={["admin", "Gerente", "Coordenador"]}>
+    <ProtectedRoute allowedRoles={["admin", "Gerente", "Coordenador", "Vendedor"]}>
       <div className="p-6">
         <div className="space-y-6">
           <div>
@@ -255,7 +326,7 @@ export default function RelatoriosPage() {
               <CardDescription>Selecione o período e vendedor para análise</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                 <div className="space-y-2">
                   <Label>Período</Label>
                   <Select value={periodoFiltro} onValueChange={(v) => setPeriodoFiltro(v as any)}>
@@ -271,13 +342,35 @@ export default function RelatoriosPage() {
                   </Select>
                 </div>
                 <div className="space-y-2">
+                  <Label>Data Início</Label>
+                  <Input
+                    type="date"
+                    value={dataInicio}
+                    onChange={(e) => setDataInicio(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Data Fim</Label>
+                  <Input
+                    type="date"
+                    value={dataFim}
+                    onChange={(e) => setDataFim(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
                   <Label>Vendedor</Label>
-                  <Select value={vendedorFiltro} onValueChange={setVendedorFiltro}>
+                  <Select
+                    value={vendedorFiltro}
+                    onValueChange={setVendedorFiltro}
+                    disabled={user?.role === "Vendedor"}
+                  >
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="todos">Todos os vendedores</SelectItem>
+                      {user?.role !== "Vendedor" && (
+                        <SelectItem value="todos">Todos os vendedores</SelectItem>
+                      )}
                       {vendedores.map((vendedor) => (
                         <SelectItem key={vendedor.id} value={vendedor.id}>
                           {vendedor.nome}
@@ -289,6 +382,31 @@ export default function RelatoriosPage() {
               </div>
             </CardContent>
           </Card>
+
+          <div className="flex justify-end">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button>
+                  <Download className="mr-2 h-4 w-4" />
+                  Exportar PDF
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => handleExportarPDF("vendas")}>
+                  <FileText className="mr-2 h-4 w-4" />
+                  Relatório de Vendas Completo
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleExportarPDF("carcacas")}>
+                  <FileText className="mr-2 h-4 w-4" />
+                  Relatório de Carcaças Pendentes
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleExportarPDF("pedidos-pendentes")}>
+                  <FileText className="mr-2 h-4 w-4" />
+                  Relatório de Pedidos Pendentes
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
 
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <Card>
@@ -623,7 +741,7 @@ export default function RelatoriosPage() {
                     <CardDescription>Exportar relatório completo de vendas do período</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <Button onClick={() => handleExportarRelatorio("vendas")} className="w-full">
+                    <Button onClick={() => handleExportarPDF("vendas")} className="w-full">
                       <Download className="mr-2 h-4 w-4" />
                       Exportar Vendas
                     </Button>
@@ -639,7 +757,7 @@ export default function RelatoriosPage() {
                     <CardDescription>Exportar relatório de carcaças pendentes</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <Button onClick={() => handleExportarRelatorio("carcaças")} className="w-full">
+                    <Button onClick={() => handleExportarPDF("carcacas")} className="w-full">
                       <Download className="mr-2 h-4 w-4" />
                       Exportar Carcaças
                     </Button>
@@ -650,14 +768,14 @@ export default function RelatoriosPage() {
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                       <FileText className="h-5 w-5" />
-                      Relatório por Vendedor
+                      Relatório de Pedidos Pendentes
                     </CardTitle>
-                    <CardDescription>Exportar desempenho de vendedores</CardDescription>
+                    <CardDescription>Exportar relatório de pedidos pendentes</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <Button onClick={() => handleExportarRelatorio("vendedores")} className="w-full">
+                    <Button onClick={() => handleExportarPDF("pedidos-pendentes")} className="w-full">
                       <Download className="mr-2 h-4 w-4" />
-                      Exportar Vendedores
+                      Exportar Pedidos Pendentes
                     </Button>
                   </CardContent>
                 </Card>
@@ -671,9 +789,9 @@ export default function RelatoriosPage() {
                     <CardDescription>Exportar histórico de clientes</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <Button onClick={() => handleExportarRelatorio("clientes")} className="w-full">
+                    <Button onClick={() => handleExportarPDF("carcacas")} className="w-full" disabled>
                       <Download className="mr-2 h-4 w-4" />
-                      Exportar Clientes
+                      Em breve
                     </Button>
                   </CardContent>
                 </Card>

@@ -127,10 +127,10 @@ export function DashboardNav({ isOpen, onClose }: DashboardNavProps) {
 
   return (
     <>
-      {/* Overlay escuro no mobile */}
+      {/* Overlay no mobile */}
       {isOpen && (
         <div
-          className="fixed inset-0 z-40 bg-black/50 lg:hidden"
+          className="fixed inset-0 z-40 bg-black/30 lg:hidden"
           onClick={() => onClose?.()}
           aria-hidden="true"
         />
@@ -139,7 +139,7 @@ export function DashboardNav({ isOpen, onClose }: DashboardNavProps) {
       {/* Sidebar */}
       <nav
         className={cn(
-          "fixed left-0 top-0 bottom-0 w-64 border-r border-zinc-800 bg-zinc-900 p-4 pt-20 transition-transform duration-300 ease-in-out z-40",
+          "fixed left-0 top-0 bottom-0 w-64 border-r border-brand-blue/20 bg-brand-blue p-4 pt-20 transition-transform duration-300 ease-in-out z-40 shadow-sm",
           "lg:relative lg:pt-4 lg:!translate-x-0",
           isOpen ? "translate-x-0" : "-translate-x-full"
         )}
@@ -155,7 +155,7 @@ export function DashboardNav({ isOpen, onClose }: DashboardNavProps) {
                 onClick={() => handleNavClick(item.href)}
                 className={cn(
                   "w-full flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors text-left",
-                  isActive ? "bg-blue-600 text-white" : "text-gray-300 hover:bg-zinc-800 hover:text-white"
+                  isActive ? "bg-brand-orange text-white" : "text-white/90 hover:bg-brand-blue/80 hover:text-white"
                 )}
               >
                 <Icon className="h-4 w-4" />

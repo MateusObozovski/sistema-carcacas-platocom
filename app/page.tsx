@@ -19,10 +19,10 @@ export default function HomePage() {
   }, [user, isLoading, router])
 
   return (
-    <div className="flex h-screen items-center justify-center bg-black">
+    <div className="flex h-screen items-center justify-center bg-background">
       <div className="text-center">
-        <div className="mx-auto h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
-        <p className="mt-4 text-sm text-gray-400">Carregando sistema...</p>
+        <div className="mx-auto h-8 w-8 animate-spin rounded-full border-4 border-brand-orange border-t-transparent" />
+        <p className="mt-4 text-sm text-slate-600">Carregando sistema...</p>
       </div>
     </div>
   )

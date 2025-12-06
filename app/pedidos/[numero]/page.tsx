@@ -9,7 +9,7 @@ import { StatusBadge } from "@/components/status-badge"
 import { useAuth } from "@/lib/auth-context"
 import { getOrderByNumber, updateOrderStatus, createClient as createSupabaseClient } from "@/lib/supabase/database"
 import { createClient } from "@/lib/supabase/client"
-import { ArrowLeft, CheckCircle, Package } from "lucide-react"
+import { ArrowLeft, CheckCircle, Package, FileText } from "lucide-react"
 import Link from "next/link"
 import { useToast } from "@/hooks/use-toast"
 import {
@@ -134,6 +134,33 @@ export default function PedidoDetalhePage() {
     }
   }
 
+  const handleGerarPDF = async () => {
+    if (!pedido || !cliente || !vendedor) {
+      toast({
+        title: "Erro",
+        description: "Dados do pedido incompletos. Aguarde o carregamento.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      const { generatePedidoIndividualPDF } = await import("@/lib/pdf-reports")
+      await generatePedidoIndividualPDF(pedido, cliente, vendedor)
+      toast({
+        title: "Sucesso",
+        description: "PDF do pedido gerado com sucesso!",
+      })
+    } catch (error: any) {
+      console.error("[PDF] Erro ao gerar PDF do pedido:", error)
+      toast({
+        title: "Erro",
+        description: error.message || "Não foi possível gerar o PDF do pedido",
+        variant: "destructive",
+      })
+    }
+  }
+
   if (isLoading) {
     return (
       <ProtectedRoute>
@@ -173,30 +200,36 @@ export default function PedidoDetalhePage() {
                   <h2 className="text-3xl font-bold tracking-tight">Pedido {pedido.numero_pedido}</h2>
                   <p className="text-muted-foreground">Detalhes completos do pedido</p>
                 </div>
-                {tipoVendaBaseTroca &&
-                  (pedido.status === "Aguardando Devolução" || pedido.status === "Atrasado") && (
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button>
-                          <CheckCircle className="mr-2 h-4 w-4" />
-                          Registrar Devolução
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Confirmar devolução de carcaça</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            Tem certeza que deseja registrar a devolução da carcaça do pedido {pedido.numero_pedido}? O
-                            {pedido.debito_carcaca || 0} carcaça(s) será(ão) devolvida(s) automaticamente.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                          <AlertDialogAction onClick={handleRegistrarDevolucao}>Confirmar Devolução</AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                  )}
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={handleGerarPDF}>
+                    <FileText className="mr-2 h-4 w-4" />
+                    Gerar PDF do Pedido
+                  </Button>
+                  {tipoVendaBaseTroca &&
+                    (pedido.status === "Aguardando Devolução" || pedido.status === "Atrasado") && (
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button>
+                            <CheckCircle className="mr-2 h-4 w-4" />
+                            Registrar Devolução
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Confirmar devolução de carcaça</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Tem certeza que deseja registrar a devolução da carcaça do pedido {pedido.numero_pedido}? O
+                              {pedido.debito_carcaca || 0} carcaça(s) será(ão) devolvida(s) automaticamente.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                            <AlertDialogAction onClick={handleRegistrarDevolucao}>Confirmar Devolução</AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    )}
+                </div>
               </div>
 
               <div className="grid gap-6 md:grid-cols-2">

@@ -40,13 +40,13 @@ export function DashboardHeader({ onMenuClick }: DashboardHeaderProps) {
   }
 
   return (
-    <header className="sticky top-0 z-50 border-b border-zinc-800 bg-zinc-900">
+    <header className="sticky top-0 z-50 border-b border-brand-blue/20 bg-brand-blue shadow-sm">
       <div className="flex h-16 items-center gap-4 px-4 lg:px-6">
         {/* Botão hambúrguer - só aparece no mobile */}
         <Button
           variant="ghost"
           size="icon"
-          className="lg:hidden text-white hover:bg-zinc-800"
+          className="lg:hidden text-white hover:bg-brand-blue/80"
             onClick={() => {
     console.log("Hamburger clicked!") // ← ADICIONE ESTA LINHA
     onMenuClick?.()
@@ -69,7 +69,7 @@ export function DashboardHeader({ onMenuClick }: DashboardHeaderProps) {
           </div>
           <div className="flex-1">
             <h1 className="text-lg lg:text-xl font-semibold text-white">Sistema de Carcaças</h1>
-            <p className="hidden sm:block text-sm text-gray-400">Controle de débitos e devoluções</p>
+            <p className="hidden sm:block text-sm text-white/80">Controle de débitos e devoluções</p>
           </div>
         </div>
 
@@ -80,20 +80,20 @@ export function DashboardHeader({ onMenuClick }: DashboardHeaderProps) {
               <Button
                 variant="outline"
                 size="sm"
-                className="gap-2 bg-zinc-800 border-zinc-700 text-white hover:bg-zinc-700"
+                className="gap-2 bg-brand-blue/80 border-white/20 text-white hover:bg-brand-blue/60"
               >
                 <User className="h-4 w-4" />
                 <span className="hidden sm:inline">{user?.name || user?.email}</span>
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56 bg-zinc-800 border-zinc-700">
+            <DropdownMenuContent align="end" className="w-56 bg-white border-gray-200 shadow-lg">
               <DropdownMenuLabel>
                 <div className="flex flex-col space-y-1">
-                  <p className="text-sm font-medium text-white">{user?.name || user?.email}</p>
+                  <p className="text-sm font-medium text-slate-800">{user?.name || user?.email}</p>
                   {user?.email && user?.name && (
-                    <p className="text-xs text-gray-400">{user.email}</p>
+                    <p className="text-xs text-slate-600">{user.email}</p>
                   )}
-                  <p className="text-xs text-gray-400">{user && getRoleLabel(user.role)}</p>
+                  <p className="text-xs text-slate-600">{user && getRoleLabel(user.role)}</p>
                 </div>
               </DropdownMenuLabel>
             </DropdownMenuContent>
@@ -102,7 +102,7 @@ export function DashboardHeader({ onMenuClick }: DashboardHeaderProps) {
             variant="outline"
             size="sm"
             onClick={handleLogout}
-            className="gap-2 bg-zinc-800 border-zinc-700 text-white hover:bg-red-600 hover:border-red-600"
+            className="gap-2 bg-brand-blue/80 border-white/20 text-white hover:bg-red-600 hover:border-red-600"
             title="Sair"
           >
             <LogOut className="h-4 w-4" />

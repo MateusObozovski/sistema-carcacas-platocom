@@ -306,11 +306,15 @@ export async function updateOrderStatus(id: string, status: string, data_devoluc
 export async function getVendedorStats(vendedorId: string) {
   const supabase = createClient()
 
-  // Get total debito from order_items where debito_carcaca > 0
-  // This represents pending carcacas
+  // Get order_items where debito_carcaca > 0 (pending carcacas)
+  // Débito Total = soma dos valores de desconto dos itens pendentes
+  // Carcaças Pendentes = soma das quantidades dos itens pendentes
   const { data: orderItems, error: itemsError } = await supabase
     .from("order_items")
     .select(`
+      quantidade,
+      preco_unitario,
+      desconto_percentual,
       debito_carcaca,
       orders!inner(
         vendedor_id,
@@ -326,8 +330,27 @@ export async function getVendedorStats(vendedorId: string) {
     throw itemsError
   }
 
-  const debitoTotal = orderItems?.reduce((sum, item) => sum + (item.debito_carcaca || 0), 0) || 0
-  const carcacasPendentes = orderItems?.length || 0
+  // Calcular Débito Total: soma dos valores de desconto
+  // Valor do desconto = preco_unitario * desconto_percentual / (100 - desconto_percentual) * quantidade
+  // Ou: valor_desconto = (preco_original - preco_unitario) * quantidade
+  // Como preco_original = preco_unitario / (1 - desconto_percentual/100)
+  // Então: valor_desconto = preco_unitario * desconto_percentual / (100 - desconto_percentual) * quantidade
+  const debitoTotal = orderItems?.reduce((sum, item) => {
+    const descontoPercentual = item.desconto_percentual || 0
+    const precoUnitario = item.preco_unitario || 0
+    const quantidade = item.quantidade || 0
+    
+    if (descontoPercentual > 0 && descontoPercentual < 100) {
+      // Calcular preço original e valor do desconto
+      const precoOriginal = precoUnitario / (1 - descontoPercentual / 100)
+      const valorDesconto = (precoOriginal - precoUnitario) * quantidade
+      return sum + valorDesconto
+    }
+    return sum
+  }, 0) || 0
+
+  // Carcaças Pendentes: soma das quantidades
+  const carcacasPendentes = orderItems?.reduce((sum, item) => sum + (item.quantidade || 0), 0) || 0
 
   return {
     debitoTotal,
@@ -338,10 +361,15 @@ export async function getVendedorStats(vendedorId: string) {
 export async function getClientStats(clienteId: string) {
   const supabase = createClient()
 
-  // Get total debito from order_items where debito_carcaca > 0
+  // Get order_items where debito_carcaca > 0 (pending carcacas)
+  // Débito Total = soma dos valores de desconto dos itens pendentes
+  // Carcaças Pendentes = soma das quantidades dos itens pendentes
   const { data: orderItems, error } = await supabase
     .from("order_items")
     .select(`
+      quantidade,
+      preco_unitario,
+      desconto_percentual,
       debito_carcaca,
       orders!inner(
         cliente_id,
@@ -357,8 +385,23 @@ export async function getClientStats(clienteId: string) {
     throw error
   }
 
-  const debitoTotal = orderItems?.reduce((sum, item) => sum + (item.debito_carcaca || 0), 0) || 0
-  const carcacasPendentes = orderItems?.length || 0
+  // Calcular Débito Total: soma dos valores de desconto
+  const debitoTotal = orderItems?.reduce((sum, item) => {
+    const descontoPercentual = item.desconto_percentual || 0
+    const precoUnitario = item.preco_unitario || 0
+    const quantidade = item.quantidade || 0
+    
+    if (descontoPercentual > 0 && descontoPercentual < 100) {
+      // Calcular preço original e valor do desconto
+      const precoOriginal = precoUnitario / (1 - descontoPercentual / 100)
+      const valorDesconto = (precoOriginal - precoUnitario) * quantidade
+      return sum + valorDesconto
+    }
+    return sum
+  }, 0) || 0
+
+  // Carcaças Pendentes: soma das quantidades
+  const carcacasPendentes = orderItems?.reduce((sum, item) => sum + (item.quantidade || 0), 0) || 0
 
   return {
     debitoTotal,

@@ -10,10 +10,10 @@ import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useAuth } from "@/lib/auth-context"
 import { createClient } from "@/lib/supabase/client"
-import { createNewClient, getVendedores } from "@/lib/supabase/database"
+import { createNewClient, getVendedores, getClientStats } from "@/lib/supabase/database"
 import { useToast } from "@/hooks/use-toast"
-import { Search, Plus, Eye } from "lucide-react"
-import { getClientById } from "@/lib/supabase/database"
+import { Search, Plus, Info } from "lucide-react"
+import Link from "next/link"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   Dialog,
@@ -35,9 +35,6 @@ export default function ClientesPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [showAddForm, setShowAddForm] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [showDetailsModal, setShowDetailsModal] = useState(false)
-  const [selectedClient, setSelectedClient] = useState<any>(null)
-  const [isLoadingDetails, setIsLoadingDetails] = useState(false)
   const supabase = createClient()
 
   const [formData, setFormData] = useState({
@@ -66,7 +63,28 @@ export default function ClientesPage() {
           return
         }
 
-        setClientes(clientesData || [])
+        // Calcular estatísticas para cada cliente
+        const clientesComStats = await Promise.all(
+          (clientesData || []).map(async (cliente) => {
+            try {
+              const stats = await getClientStats(cliente.id)
+              return {
+                ...cliente,
+                debito: stats.debitoTotal,
+                carcacasPendentes: stats.carcacasPendentes,
+              }
+            } catch (error) {
+              console.error(`[v0] Error fetching stats for client ${cliente.id}:`, error)
+              return {
+                ...cliente,
+                debito: 0,
+                carcacasPendentes: 0,
+              }
+            }
+          })
+        )
+
+        setClientes(clientesComStats)
 
         // Fetch vendedores para mostrar no filtro e no formulário
         if (user.role === "admin" || user.role === "Gerente" || user.role === "Coordenador") {
@@ -195,39 +213,6 @@ export default function ClientesPage() {
     return new Date(dateString).toLocaleDateString("pt-BR")
   }
 
-  const handleViewDetails = async (clienteId: string) => {
-    setIsLoadingDetails(true)
-    setShowDetailsModal(true)
-    try {
-      const clientData = await getClientById(clienteId)
-      
-      // Buscar dados do vendedor se necessário
-      if (clientData && (user?.role === "admin" || user?.role === "Gerente" || user?.role === "Coordenador")) {
-        const { data: vendedorData } = await supabase
-          .from("profiles")
-          .select("id, nome")
-          .eq("id", clientData.vendedor_id)
-          .single()
-        
-        setSelectedClient({
-          ...clientData,
-          profiles: vendedorData,
-        })
-      } else {
-        setSelectedClient(clientData)
-      }
-    } catch (error: any) {
-      console.error("[v0] Error loading client details:", error)
-      toast({
-        title: "Erro",
-        description: "Não foi possível carregar os detalhes do cliente",
-        variant: "destructive",
-      })
-      setShowDetailsModal(false)
-    } finally {
-      setIsLoadingDetails(false)
-    }
-  }
 
   const clientesFiltrados = clientes
     .filter((cliente) => {
@@ -368,11 +353,13 @@ export default function ClientesPage() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => handleViewDetails(cliente.id)}
-                              className="text-primary hover:underline"
+                              asChild
+                              className="text-sm"
                             >
-                              <Eye className="mr-1 h-4 w-4" />
-                              Ver detalhes
+                              <Link href={`/clientes/${cliente.id}`}>
+                                <Info className="h-4 w-4 mr-1" />
+                                Detalhes
+                              </Link>
                             </Button>
                           </TableCell>
                         </TableRow>
@@ -517,103 +504,6 @@ export default function ClientesPage() {
             </DialogContent>
           </Dialog>
 
-          <Dialog open={showDetailsModal} onOpenChange={setShowDetailsModal}>
-            <DialogContent className="sm:max-w-[600px]">
-              <DialogHeader>
-                <DialogTitle>Detalhes do Cliente</DialogTitle>
-                <DialogDescription>Informações completas do cadastro</DialogDescription>
-              </DialogHeader>
-              {isLoadingDetails ? (
-                <div className="py-8 text-center text-muted-foreground">Carregando...</div>
-              ) : selectedClient ? (
-                <div className="space-y-4">
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground">Nome / Razão Social</Label>
-                      <p className="text-sm font-medium">{selectedClient.nome}</p>
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground">CNPJ</Label>
-                      <p className="text-sm font-medium">
-                        {selectedClient.cnpj
-                          ? selectedClient.cnpj.length === 14
-                            ? maskCNPJ(selectedClient.cnpj)
-                            : selectedClient.cnpj
-                          : "-"}
-                      </p>
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground">Email</Label>
-                      <p className="text-sm font-medium">{selectedClient.email || "-"}</p>
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground">Telefone</Label>
-                      <p className="text-sm font-medium">
-                        {selectedClient.telefone
-                          ? selectedClient.telefone.length === 10
-                            ? maskPhone(selectedClient.telefone)
-                            : selectedClient.telefone
-                          : "-"}
-                      </p>
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground">Celular</Label>
-                      <p className="text-sm font-medium">
-                        {selectedClient.celular
-                          ? selectedClient.celular.length === 11
-                            ? maskCellphone(selectedClient.celular)
-                            : selectedClient.celular
-                          : "-"}
-                      </p>
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground">Status</Label>
-                      <p className="text-sm font-medium">
-                        <span className={selectedClient.ativo ? "text-green-500" : "text-red-500"}>
-                          {selectedClient.ativo ? "Ativo" : "Inativo"}
-                        </span>
-                      </p>
-                    </div>
-                    <div className="space-y-1 md:col-span-2">
-                      <Label className="text-xs text-muted-foreground">Endereço</Label>
-                      <p className="text-sm font-medium">{selectedClient.endereco || "-"}</p>
-                    </div>
-                    {(user?.role === "admin" || user?.role === "Gerente" || user?.role === "Coordenador") && (
-                      <div className="space-y-1">
-                        <Label className="text-xs text-muted-foreground">Vendedor Responsável</Label>
-                        <p className="text-sm font-medium">{selectedClient.profiles?.nome || "-"}</p>
-                      </div>
-                    )}
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground">Débito Total</Label>
-                      <p className="text-sm font-bold text-red-500">
-                        {formatCurrency(selectedClient.debitoTotal || 0)}
-                      </p>
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground">Carcaças Pendentes</Label>
-                      <p className="text-sm font-medium">{selectedClient.carcacasPendentes || 0}</p>
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground">Data de Cadastro</Label>
-                      <p className="text-sm font-medium">{formatDate(selectedClient.created_at)}</p>
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground">Última Atualização</Label>
-                      <p className="text-sm font-medium">{formatDate(selectedClient.updated_at)}</p>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="py-8 text-center text-muted-foreground">Nenhum dado disponível</div>
-              )}
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setShowDetailsModal(false)}>
-                  Fechar
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
         </div>
       </div>
     </ProtectedRoute>

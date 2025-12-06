@@ -302,14 +302,40 @@ export default function DashboardPage() {
                         </TableRow>
                       ) : (
                         meusClientes.map((cliente) => {
-                          // Calculate stats for each client
+                          // Calculate stats for each client from order_items
                           const clientePedidos = meusPedidos.filter((p) => p.cliente_id === cliente.id)
-                          const clienteDebito = clientePedidos
-                            .filter((p) => p.status === "Aguardando Devolução" || p.status === "Atrasado")
-                            .reduce((sum, p) => sum + (p.debito_carcaca || 0), 0)
-                          const clienteCarcacas = clientePedidos.filter(
+                          const pedidosPendentes = clientePedidos.filter(
                             (p) => p.status === "Aguardando Devolução" || p.status === "Atrasado",
-                          ).length
+                          )
+                          
+                          // Calcular Débito Total: soma dos valores de desconto dos order_items pendentes
+                          const clienteDebito = pedidosPendentes.reduce((sum, pedido) => {
+                            if (!pedido.order_items) return sum
+                            return sum + pedido.order_items.reduce((itemSum, item) => {
+                              if ((item.debito_carcaca || 0) <= 0) return itemSum
+                              const descontoPercentual = item.desconto_percentual || 0
+                              const precoUnitario = item.preco_unitario || 0
+                              const quantidade = item.quantidade || 0
+                              
+                              if (descontoPercentual > 0 && descontoPercentual < 100) {
+                                const precoOriginal = precoUnitario / (1 - descontoPercentual / 100)
+                                const valorDesconto = (precoOriginal - precoUnitario) * quantidade
+                                return itemSum + valorDesconto
+                              }
+                              return itemSum
+                            }, 0)
+                          }, 0)
+                          
+                          // Calcular Carcaças Pendentes: soma das quantidades dos order_items pendentes
+                          const clienteCarcacas = pedidosPendentes.reduce((sum, pedido) => {
+                            if (!pedido.order_items) return sum
+                            return sum + pedido.order_items.reduce((itemSum, item) => {
+                              if ((item.debito_carcaca || 0) > 0) {
+                                return itemSum + (item.quantidade || 0)
+                              }
+                              return itemSum
+                            }, 0)
+                          }, 0)
 
                           return (
                             <TableRow key={cliente.id}>

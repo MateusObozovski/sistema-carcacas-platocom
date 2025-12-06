@@ -67,28 +67,28 @@ export default function SetupPage() {
   }
 
   return (
-    <div className="min-h-screen bg-black flex items-center justify-center p-4">
-      <Card className="w-full max-w-2xl bg-zinc-950 border-zinc-800 p-8">
+    <div className="min-h-screen bg-background flex items-center justify-center p-4">
+      <Card className="w-full max-w-2xl bg-white border-gray-200 p-8">
         <div className="space-y-6">
           <div>
-            <h1 className="text-3xl font-bold text-white mb-2">Configuração Inicial</h1>
-            <p className="text-zinc-400">
+            <h1 className="text-3xl font-bold text-slate-800 mb-2">Configuração Inicial</h1>
+            <p className="text-slate-600">
               Execute este setup uma única vez para criar os usuários iniciais do sistema.
             </p>
           </div>
 
           {!completed && (
             <div className="space-y-4">
-              <div className="bg-yellow-950 border border-yellow-800 rounded-lg p-4">
-                <h3 className="font-semibold text-yellow-400 mb-2">⚠️ Atualização de Roles</h3>
-                <p className="text-yellow-300 text-sm mb-3">
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                <h3 className="font-semibold text-yellow-800 mb-2">⚠️ Atualização de Roles</h3>
+                <p className="text-yellow-700 text-sm mb-3">
                   Se você já tem usuários criados com role "Patrão", clique no botão abaixo para atualizar para "admin".
                 </p>
                 <Button
                   onClick={handleUpdateRoles}
                   disabled={updatingRoles || rolesUpdated}
                   variant="outline"
-                  className="w-full border-yellow-700 text-yellow-400 hover:bg-yellow-900"
+                  className="w-full border-yellow-300 text-yellow-800 hover:bg-yellow-100"
                   size="sm"
                 >
                   {updatingRoles ? (
@@ -104,9 +104,9 @@ export default function SetupPage() {
                 </Button>
               </div>
 
-              <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
-                <h3 className="font-semibold text-white mb-3">Usuários que serão criados:</h3>
-                <ul className="space-y-2 text-sm text-zinc-400">
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                <h3 className="font-semibold text-slate-800 mb-3">Usuários que serão criados:</h3>
+                <ul className="space-y-2 text-sm text-slate-600">
                   <li>• Admin (patrao@empresa.com) - senha: admin123</li>
                   <li>• Gerente Silva (gerente@empresa.com) - senha: gerente123</li>
                   <li>• Yago Vendedor (yago@empresa.com) - senha: yago123</li>
@@ -118,7 +118,7 @@ export default function SetupPage() {
               <Button
                 onClick={handleSetup}
                 disabled={loading}
-                className="w-full bg-blue-600 hover:bg-blue-700"
+                className="w-full"
                 size="lg"
               >
                 {loading ? (
@@ -135,17 +135,17 @@ export default function SetupPage() {
 
           {results.length > 0 && (
             <div className="space-y-3">
-              <h3 className="font-semibold text-white">Resultados:</h3>
+              <h3 className="font-semibold text-slate-800">Resultados:</h3>
               {results.map((result, index) => (
-                <div key={index} className="flex items-center gap-3 bg-zinc-900 border border-zinc-800 rounded-lg p-3">
+                <div key={index} className="flex items-center gap-3 bg-gray-50 border border-gray-200 rounded-lg p-3">
                   {result.status === "success" ? (
-                    <CheckCircle2 className="h-5 w-5 text-green-500 flex-shrink-0" />
+                    <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0" />
                   ) : (
-                    <XCircle className="h-5 w-5 text-red-500 flex-shrink-0" />
+                    <XCircle className="h-5 w-5 text-red-600 flex-shrink-0" />
                   )}
                   <div className="flex-1 min-w-0">
-                    <p className="text-white font-medium">{result.email}</p>
-                    {result.error && <p className="text-sm text-red-400">{result.error}</p>}
+                    <p className="text-slate-800 font-medium">{result.email}</p>
+                    {result.error && <p className="text-sm text-red-600">{result.error}</p>}
                   </div>
                 </div>
               ))}
@@ -154,16 +154,16 @@ export default function SetupPage() {
 
           {completed && (
             <div className="space-y-4">
-              <div className="bg-green-950 border border-green-800 rounded-lg p-4">
-                <p className="text-green-400 font-medium">✓ Setup concluído com sucesso!</p>
-                <p className="text-green-300 text-sm mt-1">
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                <p className="text-green-800 font-medium">✓ Setup concluído com sucesso!</p>
+                <p className="text-green-700 text-sm mt-1">
                   Você já pode fazer login com qualquer um dos usuários criados.
                 </p>
               </div>
 
               <Button
                 onClick={() => (window.location.href = "/login")}
-                className="w-full bg-blue-600 hover:bg-blue-700"
+                className="w-full"
                 size="lg"
               >
                 Ir para Login

@@ -3,8 +3,6 @@
 import { useState, useEffect } from "react"
 import { useParams } from "next/navigation"
 import { ProtectedRoute } from "@/components/protected-route"
-import { DashboardHeader } from "@/components/dashboard-header"
-import { DashboardNav } from "@/components/dashboard-nav"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -95,15 +93,7 @@ export default function ClienteDetalhePage() {
   if (isLoading) {
     return (
       <ProtectedRoute>
-        <div className="flex min-h-screen flex-col">
-          <DashboardHeader />
-          <div className="flex flex-1">
-            <DashboardNav />
-            <main className="flex-1 p-6">
-              <div className="text-center text-muted-foreground">Carregando...</div>
-            </main>
-          </div>
-        </div>
+        <div className="text-center text-muted-foreground">Carregando...</div>
       </ProtectedRoute>
     )
   }
@@ -111,19 +101,11 @@ export default function ClienteDetalhePage() {
   if (!cliente) {
     return (
       <ProtectedRoute>
-        <div className="flex min-h-screen flex-col">
-          <DashboardHeader />
-          <div className="flex flex-1">
-            <DashboardNav />
-            <main className="flex-1 p-6">
-              <div className="text-center">
-                <h2 className="text-2xl font-bold">Cliente não encontrado</h2>
-                <Button className="mt-4" asChild>
-                  <Link href="/clientes">Voltar para Clientes</Link>
-                </Button>
-              </div>
-            </main>
-          </div>
+        <div className="text-center">
+          <h2 className="text-2xl font-bold">Cliente não encontrado</h2>
+          <Button className="mt-4" asChild>
+            <Link href="/clientes">Voltar para Clientes</Link>
+          </Button>
         </div>
       </ProtectedRoute>
     )
@@ -131,51 +113,46 @@ export default function ClienteDetalhePage() {
 
   return (
     <ProtectedRoute>
-      <div className="flex min-h-screen flex-col">
-        <DashboardHeader />
-        <div className="flex flex-1">
-          <DashboardNav />
-          <main className="flex-1 p-6">
-            <div className="space-y-6">
-              <div className="flex items-center gap-4">
-                <Button variant="ghost" size="icon" asChild>
-                  <Link href="/clientes">
-                    <ArrowLeft className="h-4 w-4" />
-                  </Link>
-                </Button>
-                <div>
-                  <h2 className="text-3xl font-bold tracking-tight">{cliente.nome}</h2>
-                  <p className="text-muted-foreground">Vendedor: {vendedor?.nome}</p>
-                </div>
-              </div>
+      <div className="space-y-6">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="icon" asChild>
+            <Link href="/clientes">
+              <ArrowLeft className="h-4 w-4" />
+            </Link>
+          </Button>
+          <div>
+            <h2 className="text-3xl font-bold tracking-tight">{cliente.nome}</h2>
+            <p className="text-muted-foreground">Vendedor: {vendedor?.nome}</p>
+          </div>
+        </div>
 
-              <div className="grid gap-4 md:grid-cols-3">
-                <StatCard
-                  title="Débito Total"
-                  value={formatCurrency(cliente.debitoTotal)}
-                  icon={DollarSign}
-                  description="Total de débitos pendentes"
-                />
-                <StatCard
-                  title="Carcaças Pendentes"
-                  value={cliente.carcacasPendentes}
-                  icon={Package}
-                  description="Aguardando devolução"
-                />
-                <StatCard
-                  title="Total de Pedidos"
-                  value={pedidosCliente.length}
-                  icon={ShoppingCart}
-                  description="Pedidos realizados"
-                />
-              </div>
+        <div className="grid gap-4 md:grid-cols-3">
+          <StatCard
+            title="Débito Total"
+            value={formatCurrency(cliente.debitoTotal)}
+            icon={DollarSign}
+            description="Total de débitos pendentes"
+          />
+          <StatCard
+            title="Carcaças Pendentes"
+            value={cliente.carcacasPendentes}
+            icon={Package}
+            description="Aguardando devolução"
+          />
+          <StatCard
+            title="Total de Pedidos"
+            value={pedidosCliente.length}
+            icon={ShoppingCart}
+            description="Pedidos realizados"
+          />
+        </div>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle>Carcaças Pendentes</CardTitle>
-                  <CardDescription>Pedidos aguardando devolução de carcaça</CardDescription>
-                </CardHeader>
-                <CardContent>
+        <Card>
+          <CardHeader>
+            <CardTitle>Carcaças Pendentes</CardTitle>
+            <CardDescription>Pedidos aguardando devolução de carcaça</CardDescription>
+          </CardHeader>
+          <CardContent>
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -215,15 +192,15 @@ export default function ClienteDetalhePage() {
                       )}
                     </TableBody>
                   </Table>
-                </CardContent>
-              </Card>
+          </CardContent>
+        </Card>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle>Histórico de Pedidos</CardTitle>
-                  <CardDescription>Todos os pedidos do cliente</CardDescription>
-                </CardHeader>
-                <CardContent>
+        <Card>
+          <CardHeader>
+            <CardTitle>Histórico de Pedidos</CardTitle>
+            <CardDescription>Todos os pedidos do cliente</CardDescription>
+          </CardHeader>
+          <CardContent>
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -265,11 +242,8 @@ export default function ClienteDetalhePage() {
                       )}
                     </TableBody>
                   </Table>
-                </CardContent>
-              </Card>
-            </div>
-          </main>
-        </div>
+          </CardContent>
+        </Card>
       </div>
     </ProtectedRoute>
   )

@@ -3,8 +3,6 @@
 import { useState, useEffect } from "react"
 import { useParams } from "next/navigation"
 import { ProtectedRoute } from "@/components/protected-route"
-import { DashboardHeader } from "@/components/dashboard-header"
-import { DashboardNav } from "@/components/dashboard-nav"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -81,15 +79,7 @@ export default function VendedorDetalhePage() {
   if (isLoading) {
     return (
       <ProtectedRoute allowedRoles={["admin", "Gerente", "Coordenador"]}>
-        <div className="flex min-h-screen flex-col">
-          <DashboardHeader />
-          <div className="flex flex-1">
-            <DashboardNav />
-            <main className="flex-1 p-6">
-              <div className="text-center text-muted-foreground">Carregando...</div>
-            </main>
-          </div>
-        </div>
+        <div className="text-center text-muted-foreground">Carregando...</div>
       </ProtectedRoute>
     )
   }
@@ -97,19 +87,11 @@ export default function VendedorDetalhePage() {
   if (!vendedor) {
     return (
       <ProtectedRoute allowedRoles={["admin", "Gerente", "Coordenador"]}>
-        <div className="flex min-h-screen flex-col">
-          <DashboardHeader />
-          <div className="flex flex-1">
-            <DashboardNav />
-            <main className="flex-1 p-6">
-              <div className="text-center">
-                <h2 className="text-2xl font-bold">Vendedor não encontrado</h2>
-                <Button className="mt-4" asChild>
-                  <Link href="/vendedores">Voltar para Vendedores</Link>
-                </Button>
-              </div>
-            </main>
-          </div>
+        <div className="text-center">
+          <h2 className="text-2xl font-bold">Vendedor não encontrado</h2>
+          <Button className="mt-4" asChild>
+            <Link href="/vendedores">Voltar para Vendedores</Link>
+          </Button>
         </div>
       </ProtectedRoute>
     )
@@ -117,225 +99,243 @@ export default function VendedorDetalhePage() {
 
   return (
     <ProtectedRoute allowedRoles={["admin", "Gerente", "Coordenador"]}>
-      <div className="flex min-h-screen flex-col">
-        <DashboardHeader />
-        <div className="flex flex-1">
-          <DashboardNav />
-          <main className="flex-1 p-6">
-            <div className="space-y-6">
-              <div className="flex items-center gap-4">
-                <Button variant="ghost" size="icon" asChild>
-                  <Link href="/vendedores">
-                    <ArrowLeft className="h-4 w-4" />
-                  </Link>
-                </Button>
-                <div>
-                  <h2 className="text-3xl font-bold tracking-tight">{vendedor.nome}</h2>
-                  <p className="text-muted-foreground">Detalhes e histórico do vendedor</p>
-                </div>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                <StatCard
-                  title="Débito Total"
-                  value={formatCurrency(vendedor.debitoTotal)}
-                  icon={DollarSign}
-                  description="Total de débitos pendentes"
-                />
-                <StatCard
-                  title="Carcaças Pendentes"
-                  value={vendedor.carcacasPendentes}
-                  icon={Package}
-                  description="Aguardando devolução"
-                />
-                <StatCard
-                  title="Clientes"
-                  value={clientesVendedor.length}
-                  icon={Users}
-                  description="Total de clientes"
-                />
-                <StatCard
-                  title="Total de Vendas"
-                  value={pedidosVendedor.length}
-                  icon={ShoppingCart}
-                  description="Pedidos realizados"
-                />
-              </div>
-
-              <Tabs defaultValue="clientes" className="space-y-4">
-                <TabsList>
-                  <TabsTrigger value="clientes">Clientes</TabsTrigger>
-                  <TabsTrigger value="carcacas">Carcaças Pendentes</TabsTrigger>
-                  <TabsTrigger value="pedidos">Todos os Pedidos</TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="clientes" className="space-y-4">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Clientes do Vendedor</CardTitle>
-                      <CardDescription>Lista de clientes e seus débitos</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Cliente</TableHead>
-                            <TableHead className="text-right">Débito Total</TableHead>
-                            <TableHead className="text-right">Carcaças Pendentes</TableHead>
-                            <TableHead>Última Atualização</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {clientesVendedor.length === 0 ? (
-                            <TableRow>
-                              <TableCell colSpan={4} className="text-center text-muted-foreground">
-                                Nenhum cliente encontrado
-                              </TableCell>
-                            </TableRow>
-                          ) : (
-                            clientesVendedor.map((cliente) => {
-                              // Calculate stats for each client
-                              const clientePedidos = pedidosVendedor.filter((p) => p.cliente_id === cliente.id)
-                              const clienteDebito = clientePedidos
-                                .filter((p) => p.status === "Aguardando Devolução" || p.status === "Atrasado")
-                                .reduce((sum, p) => sum + (p.debito_carcaca || 0), 0)
-                              const clienteCarcacas = clientePedidos.filter(
-                                (p) => p.status === "Aguardando Devolução" || p.status === "Atrasado",
-                              ).length
-
-                              return (
-                                <TableRow key={cliente.id}>
-                                  <TableCell className="font-medium">
-                                    <Link href={`/clientes/${cliente.id}`} className="hover:underline">
-                                      {cliente.nome}
-                                    </Link>
-                                  </TableCell>
-                                  <TableCell className="text-right">{formatCurrency(clienteDebito)}</TableCell>
-                                  <TableCell className="text-right">{clienteCarcacas}</TableCell>
-                                  <TableCell>{formatDate(cliente.updated_at || cliente.created_at)}</TableCell>
-                                </TableRow>
-                              )
-                            })
-                          )}
-                        </TableBody>
-                      </Table>
-                    </CardContent>
-                  </Card>
-                </TabsContent>
-
-                <TabsContent value="carcacas" className="space-y-4">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Carcaças Pendentes</CardTitle>
-                      <CardDescription>Pedidos aguardando devolução de carcaça</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Pedido</TableHead>
-                            <TableHead>Cliente</TableHead>
-                            <TableHead>Produto</TableHead>
-                            <TableHead className="text-right">Débito</TableHead>
-                            <TableHead className="text-center">Dias</TableHead>
-                            <TableHead>Status</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {pedidosPendentes.length === 0 ? (
-                            <TableRow>
-                              <TableCell colSpan={6} className="text-center text-muted-foreground">
-                                Nenhuma carcaça pendente
-                              </TableCell>
-                            </TableRow>
-                          ) : (
-                            pedidosPendentes.map((pedido) => {
-                              const cliente = clientesVendedor.find((c) => c.id === pedido.cliente_id)
-                              const primeiroItem = pedido.order_items?.[0]
-                              return (
-                                <TableRow key={pedido.id}>
-                                  <TableCell className="font-mono text-sm">
-                                    <Link href={`/pedidos/${pedido.numero_pedido}`} className="hover:underline">
-                                      {pedido.numero_pedido}
-                                    </Link>
-                                  </TableCell>
-                                  <TableCell>{cliente?.nome}</TableCell>
-                                  <TableCell>{primeiroItem?.produto_nome || "-"}</TableCell>
-                                  <TableCell className="text-right">{formatCurrency(pedido.debito_carcaca || 0)}</TableCell>
-                                  <TableCell className="text-center">{getDaysPending(pedido.data_venda)}</TableCell>
-                                  <TableCell>
-                                    <StatusBadge status={mapStatusToBadge(pedido.status)} />
-                                  </TableCell>
-                                </TableRow>
-                              )
-                            })
-                          )}
-                        </TableBody>
-                      </Table>
-                    </CardContent>
-                  </Card>
-                </TabsContent>
-
-                <TabsContent value="pedidos" className="space-y-4">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Todos os Pedidos</CardTitle>
-                      <CardDescription>Histórico completo de vendas</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Pedido</TableHead>
-                            <TableHead>Cliente</TableHead>
-                            <TableHead>Produto</TableHead>
-                            <TableHead>Tipo</TableHead>
-                            <TableHead className="text-right">Valor</TableHead>
-                            <TableHead>Data</TableHead>
-                            <TableHead>Status</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {pedidosVendedor.length === 0 ? (
-                            <TableRow>
-                              <TableCell colSpan={7} className="text-center text-muted-foreground">
-                                Nenhum pedido encontrado
-                              </TableCell>
-                            </TableRow>
-                          ) : (
-                            pedidosVendedor.map((pedido) => {
-                              const cliente = clientesVendedor.find((c) => c.id === pedido.cliente_id)
-                              const primeiroItem = pedido.order_items?.[0]
-                              return (
-                                <TableRow key={pedido.id}>
-                                  <TableCell className="font-mono text-sm">
-                                    <Link href={`/pedidos/${pedido.numero_pedido}`} className="hover:underline">
-                                      {pedido.numero_pedido}
-                                    </Link>
-                                  </TableCell>
-                                  <TableCell>{cliente?.nome}</TableCell>
-                                  <TableCell>{primeiroItem?.produto_nome || "-"}</TableCell>
-                                  <TableCell>
-                                    {pedido.tipo_venda === "Base de Troca" ? "Base de Troca" : "Normal"}
-                                  </TableCell>
-                                  <TableCell className="text-right">{formatCurrency(pedido.valor_total || 0)}</TableCell>
-                                  <TableCell>{formatDate(pedido.data_venda)}</TableCell>
-                                  <TableCell>
-                                    <StatusBadge status={mapStatusToBadge(pedido.status)} />
-                                  </TableCell>
-                                </TableRow>
-                              )
-                            })
-                          )}
-                        </TableBody>
-                      </Table>
-                    </CardContent>
-                  </Card>
-                </TabsContent>
-              </Tabs>
-            </div>
-          </main>
+      <div className="space-y-6">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="icon" asChild>
+            <Link href="/vendedores">
+              <ArrowLeft className="h-4 w-4" />
+            </Link>
+          </Button>
+          <div>
+            <h2 className="text-3xl font-bold tracking-tight">{vendedor.nome}</h2>
+            <p className="text-muted-foreground">Detalhes e histórico do vendedor</p>
+          </div>
         </div>
+
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <StatCard
+            title="Débito Total"
+            value={formatCurrency(vendedor.debitoTotal)}
+            icon={DollarSign}
+            description="Total de débitos pendentes"
+          />
+          <StatCard
+            title="Carcaças Pendentes"
+            value={vendedor.carcacasPendentes}
+            icon={Package}
+            description="Aguardando devolução"
+          />
+          <StatCard
+            title="Clientes"
+            value={clientesVendedor.length}
+            icon={Users}
+            description="Total de clientes"
+          />
+          <StatCard
+            title="Total de Vendas"
+            value={pedidosVendedor.length}
+            icon={ShoppingCart}
+            description="Pedidos realizados"
+          />
+        </div>
+
+        <Tabs defaultValue="clientes" className="space-y-4">
+          <TabsList>
+            <TabsTrigger value="clientes">Clientes</TabsTrigger>
+            <TabsTrigger value="carcacas">Carcaças Pendentes</TabsTrigger>
+            <TabsTrigger value="pedidos">Todos os Pedidos</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="clientes" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Clientes do Vendedor</CardTitle>
+                <CardDescription>Lista de clientes e seus débitos</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Cliente</TableHead>
+                      <TableHead className="text-right">Débito Total</TableHead>
+                      <TableHead className="text-right">Carcaças Pendentes</TableHead>
+                      <TableHead>Última Atualização</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {clientesVendedor.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={4} className="text-center text-muted-foreground">
+                          Nenhum cliente encontrado
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      clientesVendedor.map((cliente) => {
+                        // Calculate stats for each client from order_items
+                        const clientePedidos = pedidosVendedor.filter((p) => p.cliente_id === cliente.id)
+                        const pedidosPendentes = clientePedidos.filter(
+                          (p) => p.status === "Aguardando Devolução" || p.status === "Atrasado",
+                        )
+                        
+                        // Calcular Débito Total: soma dos valores de desconto dos order_items pendentes
+                        const clienteDebito = pedidosPendentes.reduce((sum, pedido) => {
+                          if (!pedido.order_items) return sum
+                          return sum + pedido.order_items.reduce((itemSum, item) => {
+                            if ((item.debito_carcaca || 0) <= 0) return itemSum
+                            const descontoPercentual = item.desconto_percentual || 0
+                            const precoUnitario = item.preco_unitario || 0
+                            const quantidade = item.quantidade || 0
+                            
+                            if (descontoPercentual > 0 && descontoPercentual < 100) {
+                              const precoOriginal = precoUnitario / (1 - descontoPercentual / 100)
+                              const valorDesconto = (precoOriginal - precoUnitario) * quantidade
+                              return itemSum + valorDesconto
+                            }
+                            return itemSum
+                          }, 0)
+                        }, 0)
+                        
+                        // Calcular Carcaças Pendentes: soma das quantidades dos order_items pendentes
+                        const clienteCarcacas = pedidosPendentes.reduce((sum, pedido) => {
+                          if (!pedido.order_items) return sum
+                          return sum + pedido.order_items.reduce((itemSum, item) => {
+                            if ((item.debito_carcaca || 0) > 0) {
+                              return itemSum + (item.quantidade || 0)
+                            }
+                            return itemSum
+                          }, 0)
+                        }, 0)
+
+                        return (
+                          <TableRow key={cliente.id}>
+                            <TableCell className="font-medium">
+                              <Link href={`/clientes/${cliente.id}`} className="hover:underline">
+                                {cliente.nome}
+                              </Link>
+                            </TableCell>
+                            <TableCell className="text-right">{formatCurrency(clienteDebito)}</TableCell>
+                            <TableCell className="text-right">{clienteCarcacas}</TableCell>
+                            <TableCell>{formatDate(cliente.updated_at || cliente.created_at)}</TableCell>
+                          </TableRow>
+                        )
+                      })
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="carcacas" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Carcaças Pendentes</CardTitle>
+                <CardDescription>Pedidos aguardando devolução de carcaça</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Pedido</TableHead>
+                      <TableHead>Cliente</TableHead>
+                      <TableHead>Produto</TableHead>
+                      <TableHead className="text-right">Débito</TableHead>
+                      <TableHead className="text-center">Dias</TableHead>
+                      <TableHead>Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {pedidosPendentes.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={6} className="text-center text-muted-foreground">
+                          Nenhuma carcaça pendente
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      pedidosPendentes.map((pedido) => {
+                        const cliente = clientesVendedor.find((c) => c.id === pedido.cliente_id)
+                        const primeiroItem = pedido.order_items?.[0]
+                        return (
+                          <TableRow key={pedido.id}>
+                            <TableCell className="font-mono text-sm">
+                              <Link href={`/pedidos/${pedido.numero_pedido}`} className="hover:underline">
+                                {pedido.numero_pedido}
+                              </Link>
+                            </TableCell>
+                            <TableCell>{cliente?.nome}</TableCell>
+                            <TableCell>{primeiroItem?.produto_nome || "-"}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(pedido.debito_carcaca || 0)}</TableCell>
+                            <TableCell className="text-center">{getDaysPending(pedido.data_venda)}</TableCell>
+                            <TableCell>
+                              <StatusBadge status={mapStatusToBadge(pedido.status)} />
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="pedidos" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Todos os Pedidos</CardTitle>
+                <CardDescription>Histórico completo de vendas</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Pedido</TableHead>
+                      <TableHead>Cliente</TableHead>
+                      <TableHead>Produto</TableHead>
+                      <TableHead>Tipo</TableHead>
+                      <TableHead className="text-right">Valor</TableHead>
+                      <TableHead>Data</TableHead>
+                      <TableHead>Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {pedidosVendedor.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={7} className="text-center text-muted-foreground">
+                          Nenhum pedido encontrado
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      pedidosVendedor.map((pedido) => {
+                        const cliente = clientesVendedor.find((c) => c.id === pedido.cliente_id)
+                        const primeiroItem = pedido.order_items?.[0]
+                        return (
+                          <TableRow key={pedido.id}>
+                            <TableCell className="font-mono text-sm">
+                              <Link href={`/pedidos/${pedido.numero_pedido}`} className="hover:underline">
+                                {pedido.numero_pedido}
+                              </Link>
+                            </TableCell>
+                            <TableCell>{cliente?.nome}</TableCell>
+                            <TableCell>{primeiroItem?.produto_nome || "-"}</TableCell>
+                            <TableCell>
+                              {pedido.tipo_venda === "Base de Troca" ? "Base de Troca" : "Normal"}
+                            </TableCell>
+                            <TableCell className="text-right">{formatCurrency(pedido.valor_total || 0)}</TableCell>
+                            <TableCell>{formatDate(pedido.data_venda)}</TableCell>
+                            <TableCell>
+                              <StatusBadge status={mapStatusToBadge(pedido.status)} />
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </div>
     </ProtectedRoute>
   )

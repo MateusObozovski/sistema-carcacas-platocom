@@ -7,7 +7,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useAuth } from "@/lib/auth-context"
-import { getVendedores, getOrders, getVendedorDetalhes, type DatabaseVendedor, type VendedorDetalhes } from "@/lib/supabase/database"
+import { getVendedores, getOrders, type DatabaseVendedor } from "@/lib/supabase/database"
+import Link from "next/link"
 import { Search, TrendingUp, TrendingDown, Plus, Info } from "lucide-react"
 import { Progress } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
@@ -36,10 +37,6 @@ export default function VendedoresPage() {
     email: "",
     password: "",
   })
-  const [selectedVendedorId, setSelectedVendedorId] = useState<string | null>(null)
-  const [vendedorDetalhes, setVendedorDetalhes] = useState<VendedorDetalhes | null>(null)
-  const [isLoadingDetalhes, setIsLoadingDetalhes] = useState(false)
-  const [showDetalhesDialog, setShowDetalhesDialog] = useState(false)
 
   const loadVendedores = async () => {
     try {
@@ -86,32 +83,6 @@ export default function VendedoresPage() {
   const debitoTotal = vendedoresComDados.reduce((acc, v) => acc + v.debitoTotal, 0)
   const carcacasTotal = vendedoresComDados.reduce((acc, v) => acc + v.carcacasPendentes, 0)
 
-  const handleOpenDetalhes = async (vendedorId: string) => {
-    setSelectedVendedorId(vendedorId)
-    setShowDetalhesDialog(true)
-    setIsLoadingDetalhes(true)
-    setVendedorDetalhes(null)
-
-    try {
-      const detalhes = await getVendedorDetalhes(vendedorId)
-      setVendedorDetalhes(detalhes)
-    } catch (error) {
-      console.error("[v0] Error loading vendedor detalhes:", error)
-      toast({
-        title: "Erro",
-        description: "Não foi possível carregar os detalhes do vendedor",
-        variant: "destructive",
-      })
-    } finally {
-      setIsLoadingDetalhes(false)
-    }
-  }
-
-  const handleCloseDetalhes = () => {
-    setShowDetalhesDialog(false)
-    setSelectedVendedorId(null)
-    setVendedorDetalhes(null)
-  }
 
   const handleCreateVendedor = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -324,11 +295,13 @@ export default function VendedoresPage() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => handleOpenDetalhes(vendedor.id)}
+                            asChild
                             className="text-sm"
                           >
-                            <Info className="h-4 w-4 mr-1" />
-                            Detalhes
+                            <Link href={`/vendedores/${vendedor.id}`}>
+                              <Info className="h-4 w-4 mr-1" />
+                              Detalhes
+                            </Link>
                           </Button>
                         </TableCell>
                       </TableRow>
@@ -409,64 +382,6 @@ export default function VendedoresPage() {
           </DialogContent>
         </Dialog>
 
-        <Dialog open={showDetalhesDialog} onOpenChange={handleCloseDetalhes}>
-          <DialogContent className="sm:max-w-[600px]">
-            <DialogHeader>
-              <DialogTitle>Detalhes do Vendedor</DialogTitle>
-              <DialogDescription>Estatísticas detalhadas do vendedor selecionado</DialogDescription>
-            </DialogHeader>
-            {isLoadingDetalhes ? (
-              <div className="py-8 text-center text-muted-foreground">Carregando detalhes...</div>
-            ) : vendedorDetalhes ? (
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label className="text-sm font-semibold">Nome</Label>
-                  <p className="text-base">{vendedorDetalhes.nome}</p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label className="text-sm font-semibold">Total de Clientes</Label>
-                  <p className="text-2xl font-bold">{vendedorDetalhes.totalClientes}</p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label className="text-sm font-semibold">Pedidos por Status</Label>
-                  <div className="space-y-1">
-                    {Object.entries(vendedorDetalhes.pedidosPorStatus).length > 0 ? (
-                      Object.entries(vendedorDetalhes.pedidosPorStatus).map(([status, count]) => (
-                        <div key={status} className="flex justify-between items-center py-1 border-b border-border last:border-0">
-                          <span className="text-sm text-muted-foreground">{status}</span>
-                          <span className="text-sm font-medium">{count}</span>
-                        </div>
-                      ))
-                    ) : (
-                      <p className="text-sm text-muted-foreground">Nenhum pedido encontrado</p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label className="text-sm font-semibold">Valor de Carcaças Pendentes</Label>
-                  <p className="text-2xl font-bold text-red-500">
-                    {formatCurrency(vendedorDetalhes.valorCarcacasPendentes)}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Soma monetária total das carcaças pendentes
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <div className="py-8 text-center text-muted-foreground">
-                Não foi possível carregar os detalhes
-              </div>
-            )}
-            <DialogFooter>
-              <Button variant="outline" onClick={handleCloseDetalhes}>
-                Fechar
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
       </div>
     </ProtectedRoute>
   )

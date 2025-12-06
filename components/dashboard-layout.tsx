@@ -46,10 +46,10 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
 
   if (isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-black">
+      <div className="flex min-h-screen items-center justify-center bg-background">
         <div className="text-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent"></div>
-          <p className="mt-4 text-sm text-gray-400">Carregando...</p>
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-orange border-t-transparent"></div>
+          <p className="mt-4 text-sm text-slate-600">Carregando...</p>
         </div>
       </div>
     );
@@ -61,7 +61,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         <DashboardHeader onMenuClick={handleToggleSidebar} />
         <div className="flex flex-1">
           <DashboardNav isOpen={isSidebarOpen} onClose={handleCloseSidebar} />
-          <main className="flex-1 overflow-auto p-4 md:p-6 lg:p-8">
+          <main className="flex-1 overflow-auto bg-background p-4 md:p-6 lg:p-8">
             {children}
           </main>
         </div>
@@ -70,8 +70,8 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-black">
-      <p className="text-sm text-gray-400">
+    <div className="flex min-h-screen items-center justify-center bg-background">
+      <p className="text-sm text-slate-600">
         Sessão inválida. Atualize a página ou faça login novamente.
       </p>
     </div>

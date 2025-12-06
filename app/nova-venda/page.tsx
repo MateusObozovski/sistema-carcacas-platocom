@@ -1,222 +1,285 @@
-"use client"
+"use client";
 
-import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
-import { ProtectedRoute } from "@/components/protected-route"
-import { useAuth } from "@/lib/auth-context"
-import { getClients, generateOrderNumber, getProducts, createOrder, getVendedores, type DatabaseProduct } from "@/lib/supabase/database"
-import { useToast } from "@/hooks/use-toast"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/textarea"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Separator } from "@/components/ui/separator"
-import { Badge } from "@/components/ui/badge"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import type { OrderItem } from "@/lib/types"
-import { 
-  ShoppingCart, 
-  Plus, 
-  Trash2, 
-  Calculator,
-  Package,
-  User,
-  AlertCircle,
-  RefreshCw,
-  Filter
-} from "lucide-react"
+import { useState, useEffect, useMemo, useRef } from "react";
+import { useRouter } from "next/navigation";
+import { ProtectedRoute } from "@/components/protected-route";
+import { useAuth } from "@/lib/auth-context";
+import {
+  getClients,
+  generateOrderNumber,
+  getProducts,
+  createOrder,
+  getVendedorById,
+  type DatabaseProduct,
+} from "@/lib/supabase/database";
+import { useToast } from "@/hooks/use-toast";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { ProductSelectorModal } from "@/components/product-selector-modal";
+import type { OrderItem } from "@/lib/types";
+import { Plus, Trash2, Search, X } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export default function NovaVendaPage() {
-  const { user } = useAuth()
-  const router = useRouter()
-  const { toast } = useToast()
+  const { user } = useAuth();
+  const router = useRouter();
+  const { toast } = useToast();
 
-  const [clienteId, setClienteId] = useState("")
-  const [vendedorId, setVendedorId] = useState("")
-  const tipoVenda = "base-troca" // Todas as vendas são Base de Troca
-  const [observacoes, setObservacoes] = useState("")
-  const [numeroPedidoOrigem, setNumeroPedidoOrigem] = useState("")
-  const [empresa, setEmpresa] = useState<"Platocom" | "R.D.C" | "Rita de Cássia" | "Tork" | "Thiago" | "none">("none")
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [vendedores, setVendedores] = useState<any[]>([])
+  const [clienteId, setClienteId] = useState("");
+  const [clienteSearch, setClienteSearch] = useState("");
+  const [showClienteDropdown, setShowClienteDropdown] = useState(false);
+  const clienteInputRef = useRef<HTMLInputElement>(null);
+  const clienteDropdownRef = useRef<HTMLDivElement>(null);
 
-  const [produtos, setProdutos] = useState<DatabaseProduct[]>([])
-  const [clientes, setClientes] = useState<any[]>([])
-  const [filterMarca, setFilterMarca] = useState<string>("all")
-  const [filterTipo, setFilterTipo] = useState<string>("all")
-  const [filterCategoria, setFilterCategoria] = useState<string>("all")
-  const [isLoading, setIsLoading] = useState(true)
+  const [vendedorNome, setVendedorNome] = useState("");
+  const [observacoes, setObservacoes] = useState("");
+  const [numeroPedidoOrigem, setNumeroPedidoOrigem] = useState("");
+  const [empresa, setEmpresa] = useState<
+    "Platocom" | "R.D.C" | "Rita de Cássia" | "Tork" | "Thiago" | "none"
+  >("none");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isProductModalOpen, setIsProductModalOpen] = useState(false);
+  const [highlightedItemId, setHighlightedItemId] = useState<string | null>(
+    null
+  );
 
-  const [items, setItems] = useState<OrderItem[]>([])
-  const [currentProdutoId, setCurrentProdutoId] = useState("")
-  const [currentQuantidade, setCurrentQuantidade] = useState(1)
-  const [currentPreco, setCurrentPreco] = useState(0)
-  const [currentDesconto, setCurrentDesconto] = useState(10)
+  const [produtos, setProdutos] = useState<DatabaseProduct[]>([]);
+  const [clientes, setClientes] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const loadProducts = async () => {
-    try {
-      const productsData = await getProducts()
-      setProdutos(productsData)
-      toast({
-        title: "Produtos atualizados",
-        description: `${productsData.length} produtos disponíveis`,
-      })
-    } catch (error) {
-      console.error("[v0] Error loading products:", error)
-      toast({
-        title: "Erro",
-        description: "Não foi possível carregar os produtos",
-        variant: "destructive",
-      })
-    }
-  }
+  const [items, setItems] = useState<OrderItem[]>([]);
+
+  // Autocomplete de Clientes
+  const clientesFiltrados = useMemo(() => {
+    if (!clienteSearch.trim()) return clientes;
+    const searchLower = clienteSearch.toLowerCase();
+    return clientes.filter((cliente) =>
+      cliente.nome.toLowerCase().includes(searchLower)
+    );
+  }, [clientes, clienteSearch]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        clienteInputRef.current &&
+        clienteDropdownRef.current &&
+        !clienteInputRef.current.contains(event.target as Node) &&
+        !clienteDropdownRef.current.contains(event.target as Node)
+      ) {
+        setShowClienteDropdown(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   useEffect(() => {
     const loadData = async () => {
       try {
-        setIsLoading(true)
+        setIsLoading(true);
         const [productsData, clientsData] = await Promise.all([
           getProducts(),
+          // Admin, Gerente e Coordenador veem todos os clientes ativos
+          // Vendedor vê apenas seus clientes
           user?.role === "Vendedor" ? getClients(user.id) : getClients(),
-        ])
-        setProdutos(productsData)
-        setClientes(clientsData)
-
-        // Se não for vendedor, carregar lista de vendedores
-        if (user && user.role !== "Vendedor") {
-          const vendedoresData = await getVendedores()
-          setVendedores(vendedoresData)
-        } else if (user?.role === "Vendedor") {
-          // Se for vendedor, definir automaticamente
-          setVendedorId(user.id)
-        }
+        ]);
+        setProdutos(productsData);
+        setClientes(clientsData);
       } catch (error) {
-        console.error("[v0] Error loading data:", error)
+        console.error("[v0] Error loading data:", error);
       } finally {
-        setIsLoading(false)
+        setIsLoading(false);
       }
-    }
+    };
 
-    loadData()
-  }, [user])
+    loadData();
+  }, [user]);
 
-  const clientesDisponiveis = clientes
+  // Cálculos em tempo real
+  const totalOriginal = useMemo(
+    () =>
+      items.reduce(
+        (sum, item) => sum + item.precoOriginal * item.quantidade,
+        0
+      ),
+    [items]
+  );
 
-  const marcas = Array.from(new Set(produtos.map((p) => p.marca))).sort()
-  const tipos = Array.from(new Set(produtos.map((p) => p.tipo))).sort()
+  const totalDesconto = useMemo(
+    () =>
+      items.reduce(
+        (sum, item) =>
+          sum + (item.precoOriginal - item.precoUnitario) * item.quantidade,
+        0
+      ),
+    [items]
+  );
 
-  const produtosFiltrados = produtos.filter((product) => {
-    const matchesMarca = filterMarca === "all" || product.marca === filterMarca
-    const matchesTipo = filterTipo === "all" || product.tipo === filterTipo
-    const matchesCategoria = filterCategoria === "all" || product.categoria === filterCategoria
-    return matchesMarca && matchesTipo && matchesCategoria
-  })
+  const totalFinal = useMemo(
+    () => items.reduce((sum, item) => sum + item.subtotal, 0),
+    [items]
+  );
 
-  const totalOriginal = items.reduce((sum, item) => sum + item.precoOriginal * item.quantidade, 0)
-  const totalDesconto = items.reduce(
-    (sum, item) => sum + (item.precoOriginal - item.precoUnitario) * item.quantidade,
-    0,
-  )
-  const totalFinal = items.reduce((sum, item) => sum + item.subtotal, 0)
-  const totalDebitoCarcaca = items.reduce((sum, item) => sum + item.debitoCarcaca, 0)
+  const totalDebitoCarcaca = useMemo(
+    () => items.reduce((sum, item) => sum + item.debitoCarcaca, 0),
+    [items]
+  );
 
-  const handleAddItem = () => {
-    if (!currentProdutoId) {
+  const handleSelectProduct = (produto: DatabaseProduct) => {
+    // Verificar duplicidade
+    const existingItem = items.find((item) => item.produtoId === produto.id);
+    if (existingItem) {
       toast({
-        title: "Erro",
-        description: "Selecione um produto",
+        title: "Produto já adicionado",
+        description: `${produto.nome} já está na lista de itens`,
         variant: "destructive",
-      })
-      return
+      });
+
+      // Highlight da linha existente
+      setHighlightedItemId(existingItem.id);
+      setTimeout(() => setHighlightedItemId(null), 2000);
+      return;
     }
 
-    const produto = produtos.find((p) => p.id === currentProdutoId)
-    if (!produto) return
-
-    const precoOriginal = produto.preco_base
-    const valorDesconto = (currentPreco * currentDesconto) / 100
-    const precoFinal = currentPreco - valorDesconto
-    const subtotal = precoFinal * currentQuantidade
-    // debito_carcaca deve ser a quantidade de carcaças, não o valor monetário
-    const debitoCarcaca = currentQuantidade
+    // Calcular preços
+    const precoOriginal = produto.preco_base;
+    const desconto = Math.min(produto.desconto_maximo_bt, 15);
+    const valorDesconto = (precoOriginal * desconto) / 100;
+    const precoUnitario = precoOriginal - valorDesconto;
+    const quantidade = 1;
+    const subtotal = precoUnitario * quantidade;
+    const debitoCarcaca = quantidade;
 
     const newItem: OrderItem = {
       id: `item-${Date.now()}`,
-      produtoId: currentProdutoId,
+      produtoId: produto.id,
       produtoNome: produto.nome,
-      quantidade: currentQuantidade,
-      precoUnitario: precoFinal,
-      precoOriginal: precoOriginal,
-      desconto: currentDesconto,
+      quantidade,
+      precoUnitario,
+      precoOriginal,
+      desconto,
       subtotal,
       debitoCarcaca,
-    }
+    };
 
-    setItems([...items, newItem])
-    setCurrentProdutoId("")
-    setCurrentQuantidade(1)
-    setCurrentPreco(0)
-
+    setItems([...items, newItem]);
     toast({
       title: "Item adicionado",
-      description: `${produto.nome} adicionado ao carrinho`,
-    })
-  }
+      description: `${produto.nome} adicionado ao pedido`,
+    });
+  };
 
   const handleRemoveItem = (itemId: string) => {
-    setItems(items.filter((item) => item.id !== itemId))
-  }
-
-  const handleProdutoChange = (produtoId: string) => {
-    setCurrentProdutoId(produtoId)
-    const produto = produtos.find((p) => p.id === produtoId)
-    if (produto) {
-      setCurrentPreco(produto.preco_base)
-      // Set max discount based on product
-      setCurrentDesconto(Math.min(produto.desconto_maximo_bt, 15))
-    }
-  }
+    setItems(items.filter((item) => item.id !== itemId));
+  };
 
   const atualizarQuantidade = (itemId: string, novaQuantidade: number) => {
-    if (novaQuantidade < 1) return
-    setItems(items.map(item => {
-      if (item.id === itemId) {
-        const subtotal = item.precoUnitario * novaQuantidade
-        // debito_carcaca deve ser a quantidade de carcaças, não o valor monetário
-        const debitoCarcaca = novaQuantidade
-        return { ...item, quantidade: novaQuantidade, subtotal, debitoCarcaca }
+    if (novaQuantidade < 1) return;
+    setItems(
+      items.map((item) => {
+        if (item.id === itemId) {
+          const subtotal = item.precoUnitario * novaQuantidade;
+          const debitoCarcaca = novaQuantidade;
+          return {
+            ...item,
+            quantidade: novaQuantidade,
+            subtotal,
+            debitoCarcaca,
+          };
+        }
+        return item;
+      })
+    );
+  };
+
+  const atualizarDesconto = (itemId: string, novoDesconto: number) => {
+    const item = items.find((i) => i.id === itemId);
+    if (!item) return;
+
+    // Validar desconto máximo do produto
+    const produto = produtos.find((p) => p.id === item.produtoId);
+    const descontoMaximo = produto?.desconto_maximo_bt || 15;
+    const descontoFinal = Math.min(Math.max(novoDesconto, 0), descontoMaximo);
+
+    const valorDesconto = (item.precoOriginal * descontoFinal) / 100;
+    const precoUnitario = item.precoOriginal - valorDesconto;
+    const subtotal = precoUnitario * item.quantidade;
+
+    setItems(
+      items.map((i) =>
+        i.id === itemId
+          ? { ...i, desconto: descontoFinal, precoUnitario, subtotal }
+          : i
+      )
+    );
+  };
+
+  const handleSelectCliente = async (clienteId: string) => {
+    setClienteId(clienteId);
+    const cliente = clientes.find((c) => c.id === clienteId);
+    if (cliente) {
+      setClienteSearch(cliente.nome);
+
+      // Buscar o vendedor do cliente
+      if (cliente.vendedor_id) {
+        try {
+          const vendedor = await getVendedorById(cliente.vendedor_id);
+          setVendedorNome(vendedor?.nome || "Não informado");
+        } catch (error) {
+          console.error("[v0] Error loading vendedor:", error);
+          setVendedorNome("Não informado");
+        }
+      } else {
+        setVendedorNome("Não informado");
       }
-      return item
-    }))
-  }
+    }
+    setShowClienteDropdown(false);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setIsSubmitting(true)
+    e.preventDefault();
+    setIsSubmitting(true);
 
-    // Determinar o vendedor responsável
-    const vendedorResponsavel = user?.role === "Vendedor" ? user.id : vendedorId
+    // Buscar o vendedor_id do cliente selecionado
+    const cliente = clientes.find((c) => c.id === clienteId);
+    const vendedorResponsavel = cliente?.vendedor_id;
 
     if (!clienteId || items.length === 0 || !vendedorResponsavel) {
       toast({
         title: "Erro",
-        description: items.length === 0 
-          ? "Adicione pelo menos um item" 
-          : !clienteId 
-          ? "Selecione um cliente"
-          : "Selecione o vendedor responsável",
+        description:
+          items.length === 0
+            ? "Adicione pelo menos um item"
+            : !clienteId
+            ? "Selecione um cliente"
+            : "Cliente não possui vendedor vinculado",
         variant: "destructive",
-      })
-      setIsSubmitting(false)
-      return
+      });
+      setIsSubmitting(false);
+      return;
     }
 
     try {
-      const numeroPedido = await generateOrderNumber()
+      const numeroPedido = await generateOrderNumber();
 
-      // Create order
       const order = {
         numero_pedido: numeroPedido,
         cliente_id: clienteId,
@@ -229,9 +292,8 @@ export default function NovaVendaPage() {
         observacoes: observacoes || undefined,
         numero_pedido_origem: numeroPedidoOrigem.trim() || undefined,
         empresa: empresa && empresa !== "none" ? empresa : undefined,
-      }
+      };
 
-      // Create order items
       const orderItems = items.map((item) => ({
         produto_id: item.produtoId,
         produto_nome: item.produtoNome,
@@ -241,419 +303,365 @@ export default function NovaVendaPage() {
         preco_final: item.precoUnitario,
         debito_carcaca: item.debitoCarcaca,
         tipo_venda: "Base de Troca",
-      }))
+      }));
 
-      await createOrder(order, orderItems)
+      await createOrder(order, orderItems);
 
       toast({
         title: "Venda registrada!",
         description: `Pedido ${numeroPedido} criado com sucesso`,
-      })
+      });
 
       setTimeout(() => {
-        router.push(`/pedidos/${numeroPedido}`)
-      }, 1000)
+        router.push(`/pedidos/${numeroPedido}`);
+      }, 1000);
     } catch (error) {
-      console.error("[v0] Error creating order:", error)
+      console.error("[v0] Error creating order:", error);
       toast({
         title: "Erro",
         description: "Não foi possível registrar a venda",
         variant: "destructive",
-      })
+      });
     } finally {
-      setIsSubmitting(false)
+      setIsSubmitting(false);
     }
-  }
+  };
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat("pt-BR", {
       style: "currency",
       currency: "BRL",
-    }).format(value)
-  }
+    }).format(value);
+  };
 
   return (
     <ProtectedRoute>
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-3xl font-bold tracking-tight">Nova Venda</h2>
-            <p className="text-muted-foreground">Registre uma nova venda para seus clientes</p>
-          </div>
-          <Button onClick={loadProducts} variant="outline" size="sm">
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Atualizar Produtos
-          </Button>
-        </div>
-
-        <form onSubmit={handleSubmit}>
-          <div className="grid gap-6 lg:grid-cols-3">
-            {/* Coluna Esquerda - Formulário */}
-            <div className="lg:col-span-2 space-y-6">
-              {/* Card Cliente e Tipo */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <User className="h-5 w-5" />
-                    Informações da Venda
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="cliente">Cliente *</Label>
-                    <Select value={clienteId} onValueChange={setClienteId} required>
-                      <SelectTrigger id="cliente">
-                        <SelectValue placeholder="Selecione o cliente" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {clientesDisponiveis.map((cliente) => (
-                          <SelectItem key={cliente.id} value={cliente.id}>
-                            {cliente.nome}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {user?.role !== "Vendedor" && (
-                    <div className="space-y-2">
-                      <Label htmlFor="vendedor">Vendedor Responsável *</Label>
-                      <Select value={vendedorId} onValueChange={setVendedorId} required>
-                        <SelectTrigger id="vendedor">
-                          <SelectValue placeholder="Selecione o vendedor" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {vendedores.map((vendedor) => (
-                            <SelectItem key={vendedor.id} value={vendedor.id}>
-                              {vendedor.nome}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+      <div className="flex flex-col h-[calc(100vh-4rem-2rem)] bg-background overflow-hidden -m-4 md:-m-6 lg:-m-8">
+        <form
+          onSubmit={handleSubmit}
+          className="flex flex-col h-full overflow-hidden"
+        >
+          {/* 1. CABEÇALHO - Compacto e Horizontal */}
+          <div className="border-b bg-muted/30 px-6 py-5 shrink-0">
+            <div className="grid grid-cols-4 gap-4">
+              {/* Cliente - Autocomplete */}
+              <div className="space-y-2 relative">
+                <Label htmlFor="cliente" className="text-base font-medium">
+                  Cliente *
+                </Label>
+                <div className="relative" ref={clienteInputRef}>
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="cliente"
+                    placeholder="Buscar cliente..."
+                    value={clienteSearch}
+                    onChange={(e) => {
+                      setClienteSearch(e.target.value);
+                      setShowClienteDropdown(true);
+                      if (!e.target.value) {
+                        setClienteId("");
+                        setVendedorNome("");
+                      }
+                    }}
+                    onFocus={() => setShowClienteDropdown(true)}
+                    required
+                    className="pl-9 h-11 text-base"
+                  />
+                  {clienteId && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setClienteId("");
+                        setClienteSearch("");
+                        setVendedorNome("");
+                      }}
+                      className="absolute right-2 top-1/2 transform -translate-y-1/2"
+                    >
+                      <X className="h-4 w-4 text-muted-foreground hover:text-foreground" />
+                    </button>
                   )}
-
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="numeroPedidoOrigem">Número do Pedido Origem</Label>
-                      <Input
-                        id="numeroPedidoOrigem"
-                        placeholder="Ex: PED-12345"
-                        value={numeroPedidoOrigem}
-                        onChange={(e) => setNumeroPedidoOrigem(e.target.value)}
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="empresa">Empresa</Label>
-                      <Select 
-                        value={empresa || "none"} 
-                        onValueChange={(v) => setEmpresa(v === "none" ? "" : (v as any))}
+                </div>
+                {showClienteDropdown && clientesFiltrados.length > 0 && (
+                  <div
+                    ref={clienteDropdownRef}
+                    className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-lg max-h-60 overflow-auto"
+                  >
+                    {clientesFiltrados.map((cliente) => (
+                      <div
+                        key={cliente.id}
+                        onClick={() => handleSelectCliente(cliente.id)}
+                        className="px-4 py-3 hover:bg-accent cursor-pointer text-base"
                       >
-                        <SelectTrigger id="empresa">
-                          <SelectValue placeholder="Selecione a empresa (opcional)" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">Nenhuma</SelectItem>
-                          <SelectItem value="Platocom">Platocom</SelectItem>
-                          <SelectItem value="R.D.C">R.D.C</SelectItem>
-                          <SelectItem value="Rita de Cássia">Rita de Cássia</SelectItem>
-                          <SelectItem value="Tork">Tork</SelectItem>
-                          <SelectItem value="Thiago">Thiago</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
+                        {cliente.nome}
+                      </div>
+                    ))}
                   </div>
+                )}
+              </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="observacoes">Observações</Label>
-                    <Textarea
-                      id="observacoes"
-                      placeholder="Informações adicionais..."
-                      value={observacoes}
-                      onChange={(e) => setObservacoes(e.target.value)}
-                      rows={3}
-                    />
-                  </div>
-                </CardContent>
-              </Card>
+              {/* Vendedor - Somente Leitura */}
+              <div className="space-y-2">
+                <Label htmlFor="vendedor" className="text-base font-medium">
+                  Vendedor
+                </Label>
+                <Input
+                  id="vendedor"
+                  value={
+                    clienteId
+                      ? vendedorNome || "Carregando..."
+                      : "Selecione um cliente"
+                  }
+                  disabled
+                  className="h-11 text-base bg-muted"
+                />
+              </div>
 
-              {/* Card Filtros */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Filter className="h-5 w-5" />
-                    Filtros de Produtos
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid gap-4 md:grid-cols-3">
-                    <div className="space-y-2">
-                      <Label>Marca</Label>
-                      <Select value={filterMarca} onValueChange={setFilterMarca}>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">Todas</SelectItem>
-                          {marcas.map((marca) => (
-                            <SelectItem key={marca} value={marca}>
-                              {marca}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+              {/* Número Pedido Origem */}
+              <div className="space-y-2">
+                <Label
+                  htmlFor="numeroPedidoOrigem"
+                  className="text-base font-medium"
+                >
+                  Nº Pedido Origem
+                </Label>
+                <Input
+                  id="numeroPedidoOrigem"
+                  placeholder="Ex: PED-12345"
+                  value={numeroPedidoOrigem}
+                  onChange={(e) => setNumeroPedidoOrigem(e.target.value)}
+                  className="h-11 text-base"
+                />
+              </div>
 
-                    <div className="space-y-2">
-                      <Label>Tipo</Label>
-                      <Select value={filterTipo} onValueChange={setFilterTipo}>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">Todos</SelectItem>
-                          {tipos.map((tipo) => (
-                            <SelectItem key={tipo} value={tipo}>
-                              {tipo}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+              {/* Empresa */}
+              <div className="space-y-2">
+                <Label htmlFor="empresa" className="text-base font-medium">
+                  Empresa
+                </Label>
+                <Select
+                  value={empresa || "none"}
+                  onValueChange={(v) =>
+                    setEmpresa(v === "none" ? "none" : (v as any))
+                  }
+                >
+                  <SelectTrigger id="empresa" className="h-11 text-base">
+                    <SelectValue placeholder="Selecione..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Nenhuma</SelectItem>
+                    <SelectItem value="Platocom">Platocom</SelectItem>
+                    <SelectItem value="R.D.C">R.D.C</SelectItem>
+                    <SelectItem value="Rita de Cássia">
+                      Rita de Cássia
+                    </SelectItem>
+                    <SelectItem value="Tork">Tork</SelectItem>
+                    <SelectItem value="Thiago">Thiago</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
 
-                    <div className="space-y-2">
-                      <Label>Categoria</Label>
-                      <Select value={filterCategoria} onValueChange={setFilterCategoria}>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">Todas</SelectItem>
-                          <SelectItem value="kit">Kit</SelectItem>
-                          <SelectItem value="plato">Platô</SelectItem>
-                          <SelectItem value="mancal">Mancal</SelectItem>
-                          <SelectItem value="disco">Disco</SelectItem>
-                          <SelectItem value="outros">Outros</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+          {/* 2. CORPO: Tabela de Itens */}
+          <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+            {/* Botão Adicionar Produto */}
+            <div className="px-6 py-4 border-b bg-background shrink-0">
+              <Button
+                type="button"
+                onClick={() => setIsProductModalOpen(true)}
+                className="h-11 text-base"
+              >
+                <Plus className="mr-2 h-5 w-5" />
+                Adicionar Produto
+              </Button>
+            </div>
 
-              {/* Card Adicionar Produto */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Package className="h-5 w-5" />
-                    Adicionar Produto
-                  </CardTitle>
-                  <CardDescription>
-                    {produtosFiltrados.length} produtos disponíveis
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label>Produto</Label>
-                      <Select value={currentProdutoId} onValueChange={handleProdutoChange}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selecione..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {produtosFiltrados.length === 0 ? (
-                            <SelectItem value="none" disabled>
-                              Nenhum produto
-                            </SelectItem>
-                          ) : (
-                            produtosFiltrados.map((produto) => (
-                              <SelectItem key={produto.id} value={produto.id}>
-                                {produto.nome} - {formatCurrency(produto.preco_base)}
-                              </SelectItem>
-                            ))
-                          )}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Quantidade</Label>
-                      <Input
-                        type="number"
-                        min="1"
-                        value={currentQuantidade}
-                        onChange={(e) => setCurrentQuantidade(Number(e.target.value))}
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Preço Unitário</Label>
-                      <Input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={currentPreco}
-                        onChange={(e) => setCurrentPreco(Number(e.target.value))}
-                        disabled={!currentProdutoId}
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Desconto (%)</Label>
-                      <Input
-                        type="number"
-                        min="5"
-                        max="15"
-                        value={currentDesconto}
-                        onChange={(e) => setCurrentDesconto(Number(e.target.value))}
-                      />
-                    </div>
-                  </div>
-
-                  <Button type="button" onClick={handleAddItem} className="w-full">
-                    <Plus className="mr-2 h-4 w-4" />
-                    Adicionar ao Carrinho
-                  </Button>
-                </CardContent>
-              </Card>
-
-              {/* Card Carrinho */}
-              {items.length > 0 && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <ShoppingCart className="h-5 w-5" />
-                      Carrinho ({items.length})
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-3">
-                      {items.map((item) => (
-                        <div key={item.id} className="flex items-center gap-4 p-4 border rounded-lg">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-1">
-                              <p className="font-medium">{item.produtoNome}</p>
-                              {item.desconto > 0 && (
-                                <Badge variant="secondary">{item.desconto}% desc</Badge>
-                              )}
-                            </div>
-                            <p className="text-sm text-muted-foreground">
-                              {formatCurrency(item.precoUnitario)} × {item.quantidade} = {formatCurrency(item.subtotal)}
-                            </p>
-                            {item.debitoCarcaca > 0 && (
-                              <p className="text-xs text-orange-500">
-                                Carcaças: {item.debitoCarcaca} carcaça(s)
-                              </p>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              onClick={() => atualizarQuantidade(item.id, item.quantidade - 1)}
-                            >
-                              -
-                            </Button>
-                            <span className="w-8 text-center">{item.quantidade}</span>
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              onClick={() => atualizarQuantidade(item.id, item.quantidade + 1)}
-                            >
-                              +
-                            </Button>
-                          </div>
+            {/* Tabela com scroll apenas nesta área */}
+            <div className="flex-1 overflow-y-auto px-6 min-h-0">
+              {items.length > 0 ? (
+                <Table>
+                  <TableHeader className="sticky top-0 bg-background z-10 border-b">
+                    <TableRow>
+                      <TableHead className="w-[300px] text-base font-semibold">
+                        Item/Descrição
+                      </TableHead>
+                      <TableHead className="w-[100px] text-base font-semibold">
+                        Qtd
+                      </TableHead>
+                      <TableHead className="w-[120px] text-base font-semibold">
+                        Vl. Unit.
+                      </TableHead>
+                      <TableHead className="w-[100px] text-base font-semibold">
+                        Desc %
+                      </TableHead>
+                      <TableHead className="w-[120px] text-base font-semibold">
+                        Subtotal
+                      </TableHead>
+                      <TableHead className="w-[60px] text-base font-semibold">
+                        Ações
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {items.map((item) => (
+                      <TableRow
+                        key={item.id}
+                        className={cn(
+                          highlightedItemId === item.id &&
+                            "bg-yellow-100 dark:bg-yellow-900/20 animate-pulse"
+                        )}
+                      >
+                        <TableCell className="font-medium text-base">
+                          {item.produtoNome}
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            type="number"
+                            min="1"
+                            value={item.quantidade}
+                            onChange={(e) =>
+                              atualizarQuantidade(
+                                item.id,
+                                Number(e.target.value) || 1
+                              )
+                            }
+                            className="w-20 h-10 text-base"
+                          />
+                        </TableCell>
+                        <TableCell className="text-base">
+                          {formatCurrency(item.precoUnitario)}
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            type="number"
+                            min="0"
+                            max={
+                              produtos.find((p) => p.id === item.produtoId)
+                                ?.desconto_maximo_bt || 15
+                            }
+                            step="0.1"
+                            value={item.desconto}
+                            onChange={(e) =>
+                              atualizarDesconto(
+                                item.id,
+                                Number(e.target.value) || 0
+                              )
+                            }
+                            className="w-20 h-10 text-base"
+                          />
+                        </TableCell>
+                        <TableCell className="font-medium text-base">
+                          {formatCurrency(item.subtotal)}
+                        </TableCell>
+                        <TableCell>
                           <Button
+                            type="button"
                             variant="ghost"
                             size="icon"
                             onClick={() => handleRemoveItem(item.id)}
-                            className="text-destructive"
+                            className="h-10 w-10 text-destructive hover:text-destructive"
                           >
-                            <Trash2 className="h-4 w-4" />
+                            <Trash2 className="h-5 w-5" />
                           </Button>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              ) : (
+                <div className="flex items-center justify-center h-full text-muted-foreground">
+                  <div className="text-center">
+                    <p className="text-lg mb-2">Nenhum item adicionado</p>
+                    <p className="text-base">
+                      Clique em "Adicionar Produto" para começar
+                    </p>
+                  </div>
+                </div>
               )}
             </div>
+          </div>
 
-            {/* Coluna Direita - Resumo */}
-            <div>
-              <Card className="sticky top-6">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Calculator className="h-5 w-5" />
-                    Resumo
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Itens</span>
-                      <span className="font-medium">{items.length}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Subtotal</span>
-                      <span className="font-medium">{formatCurrency(totalOriginal)}</span>
-                    </div>
-                    {totalDesconto > 0 && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-green-600">Desconto</span>
-                        <span className="font-medium text-green-600">- {formatCurrency(totalDesconto)}</span>
-                      </div>
-                    )}
-                    {totalDebitoCarcaca > 0 && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-orange-500">Carcaças Pendentes</span>
-                        <span className="font-medium text-orange-500">{totalDebitoCarcaca} carcaça(s)</span>
-                      </div>
-                    )}
+          {/* 3. RODAPÉ - Fixo na parte inferior */}
+          <div className="border-t bg-muted/30 px-6 py-4 shrink-0">
+            <div className="flex gap-6">
+              {/* Esquerda - Observações (60%) */}
+              <div style={{ width: "60%" }}>
+                <Label
+                  htmlFor="observacoes"
+                  className="text-base font-medium mb-2 block"
+                >
+                  Observações
+                </Label>
+                <Textarea
+                  id="observacoes"
+                  placeholder="Informações adicionais sobre o pedido..."
+                  value={observacoes}
+                  onChange={(e) => setObservacoes(e.target.value)}
+                  rows={3}
+                  className="resize-none text-base"
+                />
+              </div>
+
+              {/* Direita - Totais e Botão (40%) */}
+              <div
+                className="flex flex-col justify-between"
+                style={{ width: "40%" }}
+              >
+                <div className="space-y-3 text-right">
+                  <div className="flex justify-between text-base">
+                    <span className="text-muted-foreground">Total Bruto:</span>
+                    <span className="font-medium">
+                      {formatCurrency(totalOriginal)}
+                    </span>
                   </div>
-
-                  <Separator />
-
-                  <div className="flex justify-between">
-                    <span className="text-lg font-semibold">Total</span>
-                    <span className="text-lg font-bold">{formatCurrency(totalFinal)}</span>
-                  </div>
-
-                  {totalDebitoCarcaca > 0 && (
-                    <Alert>
-                      <AlertCircle className="h-4 w-4" />
-                      <AlertDescription className="text-xs">
-                        Pedido com carcaças pendentes
-                      </AlertDescription>
-                    </Alert>
+                  {totalDesconto > 0 && (
+                    <div className="flex justify-between text-base">
+                      <span className="text-green-600">Descontos:</span>
+                      <span className="font-medium text-green-600">
+                        - {formatCurrency(totalDesconto)}
+                      </span>
+                    </div>
                   )}
+                  <div className="border-t pt-3 mt-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-lg font-semibold">
+                        TOTAL LÍQUIDO:
+                      </span>
+                      <span className="text-2xl font-bold text-primary">
+                        {formatCurrency(totalFinal)}
+                      </span>
+                    </div>
+                  </div>
+                  {totalDebitoCarcaca > 0 && (
+                    <div className="flex justify-between text-sm text-orange-500 pt-1">
+                      <span>Carcaças Pendentes:</span>
+                      <span>{totalDebitoCarcaca} carcaça(s)</span>
+                    </div>
+                  )}
+                </div>
 
+                <div className="flex justify-end mt-4">
                   <Button
                     type="submit"
-                    disabled={isSubmitting || !clienteId || items.length === 0 || (user?.role !== "Vendedor" && !vendedorId)}
-                    className="w-full"
-                    size="lg"
+                    disabled={isSubmitting || !clienteId || items.length === 0}
+                    className="bg-orange-500 hover:bg-orange-600 text-white h-12 px-10 text-base font-semibold"
                   >
-                    {isSubmitting ? "Processando..." : "Finalizar Venda"}
+                    {isSubmitting ? "Processando..." : "Salvar Venda"}
                   </Button>
-
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => router.back()}
-                    disabled={isSubmitting}
-                    className="w-full"
-                  >
-                    Cancelar
-                  </Button>
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             </div>
           </div>
         </form>
+
+        {/* Modal de Seleção de Produtos */}
+        <ProductSelectorModal
+          open={isProductModalOpen}
+          onOpenChange={setIsProductModalOpen}
+          products={produtos}
+          onSelectProduct={handleSelectProduct}
+        />
       </div>
     </ProtectedRoute>
-  )
+  );
 }
