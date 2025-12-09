@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { PRODUCT_MARCAS } from "@/lib/types"
 
 // Schema para criação de perfil
 export const createProfileSchema = z.object({
@@ -45,7 +46,9 @@ export const createProductSchema = z.object({
     .min(2, "Nome deve ter pelo menos 2 caracteres")
     .max(200, "Nome deve ter no máximo 200 caracteres")
     .trim(),
-  marca: z.string().min(1, "Marca é obrigatória").max(100).trim(),
+  marca: z.enum(PRODUCT_MARCAS as [string, ...string[]], {
+    errorMap: () => ({ message: "Marca inválida. Selecione uma marca da lista." }),
+  }),
   tipo: z.string().min(1, "Tipo é obrigatório").max(100).trim(),
   categoria: z.enum(["kit", "plato", "mancal", "disco", "outros"]),
   preco_base: z.number().positive("Preço deve ser positivo").max(999999.99),

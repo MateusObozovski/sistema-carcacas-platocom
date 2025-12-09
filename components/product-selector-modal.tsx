@@ -20,6 +20,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Search, Package } from "lucide-react";
 import type { DatabaseProduct } from "@/lib/supabase/database";
+import { PRODUCT_MARCAS } from "@/lib/types";
 
 interface ProductSelectorModalProps {
   open: boolean;
@@ -39,10 +40,8 @@ export function ProductSelectorModal({
   const [filterTipo, setFilterTipo] = useState<string>("all");
   const [filterCategoria, setFilterCategoria] = useState<string>("all");
 
-  const marcas = useMemo(
-    () => Array.from(new Set(products.map((p) => p.marca))).sort(),
-    [products]
-  );
+  // Usar lista fixa de marcas
+  const marcas = PRODUCT_MARCAS;
   const tipos = useMemo(
     () => Array.from(new Set(products.map((p) => p.tipo))).sort(),
     [products]
@@ -115,7 +114,7 @@ export function ProductSelectorModal({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todas</SelectItem>
-                {marcas.map((marca) => (
+                {PRODUCT_MARCAS.map((marca) => (
                   <SelectItem key={marca} value={marca}>
                     {marca}
                   </SelectItem>

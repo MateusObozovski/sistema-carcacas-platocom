@@ -30,6 +30,7 @@ import {
 } from "@/lib/supabase/database"
 import { isAuthError } from "@/lib/utils"
 import { useRouter } from "next/navigation"
+import { PRODUCT_MARCAS } from "@/lib/types"
 
 export default function ProdutosPage() {
   const { toast } = useToast()
@@ -110,7 +111,6 @@ export default function ProdutosPage() {
     loadProducts()
   }, [toast, router])
 
-  const marcas = Array.from(new Set(products.map((p) => p.marca))).sort()
   const tipos = Array.from(new Set(products.map((p) => p.tipo))).sort()
 
   const filteredProducts = products.filter((product) => {
@@ -389,10 +389,11 @@ export default function ProdutosPage() {
                       <SelectValue placeholder="Selecione a marca" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="Mercedes">Mercedes</SelectItem>
-                      <SelectItem value="Ford">Ford</SelectItem>
-                      <SelectItem value="Scania">Scania</SelectItem>
-                      <SelectItem value="Volvo">Volvo</SelectItem>
+                      {PRODUCT_MARCAS.map((marca) => (
+                        <SelectItem key={marca} value={marca}>
+                          {marca}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -539,7 +540,7 @@ export default function ProdutosPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todas Marcas</SelectItem>
-                    {marcas.map((marca) => (
+                    {PRODUCT_MARCAS.map((marca) => (
                       <SelectItem key={marca} value={marca}>
                         {marca}
                       </SelectItem>

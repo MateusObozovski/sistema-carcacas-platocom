@@ -34,6 +34,7 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { isAuthError } from "@/lib/utils"
 import { useRouter } from "next/navigation"
+import { PRODUCT_MARCAS } from "@/lib/types"
 
 interface EntryItem {
   produtoId: string
@@ -222,7 +223,8 @@ export default function EntradaMercadoriaPage() {
   }
 
   // Obter valores únicos para os filtros
-  const marcasUnicas = Array.from(new Set(produtos.filter((p) => p.ativo).map((p) => p.marca))).sort()
+  // Usar lista fixa de marcas
+  const marcasUnicas = PRODUCT_MARCAS
   const tiposUnicos = Array.from(new Set(produtos.filter((p) => p.ativo).map((p) => p.tipo))).sort()
   const categoriasUnicas = Array.from(new Set(produtos.filter((p) => p.ativo).map((p) => p.categoria))).sort()
 
@@ -745,7 +747,7 @@ export default function EntradaMercadoriaPage() {
                               </SelectTrigger>
                               <SelectContent>
                                 <SelectItem value="all">Todas</SelectItem>
-                                {marcasUnicas.map((marca) => (
+                                {PRODUCT_MARCAS.map((marca) => (
                                   <SelectItem key={marca} value={marca}>
                                     {marca}
                                   </SelectItem>
