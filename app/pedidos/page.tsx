@@ -32,6 +32,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 export default function PedidosPage() {
   const { user } = useAuth();
@@ -45,6 +52,13 @@ export default function PedidosPage() {
   const [vendedores, setVendedores] = useState<any[]>([]);
   const [clientes, setClientes] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [observacoesDialog, setObservacoesDialog] = useState<{
+    open: boolean;
+    texto: string;
+  }>({
+    open: false,
+    texto: "",
+  });
   const supabase = createClient();
 
   useEffect(() => {
@@ -336,14 +350,18 @@ export default function PedidosPage() {
                         )}
                         <TableCell>
                           {pedido.observacoes ? (
-                            <div className="relative inline-block group">
-                              <AlertCircle className="h-4 w-4 text-muted-foreground cursor-help hover:text-foreground transition-colors" />
-                              <div className="absolute right-0 top-full mt-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50 pointer-events-none">
-                                <div className="bg-popover text-popover-foreground text-sm rounded-md border border-border shadow-lg p-3 max-w-xs whitespace-normal wrap-break-word">
-                                  {pedido.observacoes}
-                                </div>
-                              </div>
-                            </div>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setObservacoesDialog({
+                                  open: true,
+                                  texto: pedido.observacoes,
+                                })
+                              }
+                              className="inline-flex items-center justify-center"
+                            >
+                              <AlertCircle className="h-4 w-4 text-muted-foreground cursor-pointer hover:text-foreground transition-colors" />
+                            </button>
                           ) : (
                             <span className="text-muted-foreground">-</span>
                           )}
@@ -356,6 +374,27 @@ export default function PedidosPage() {
             )}
           </CardContent>
         </Card>
+
+        <Dialog
+          open={observacoesDialog.open}
+          onOpenChange={(open) =>
+            setObservacoesDialog({ open, texto: observacoesDialog.texto })
+          }
+        >
+          <DialogContent className="sm:max-w-[500px]">
+            <DialogHeader>
+              <DialogTitle>Observações do Pedido</DialogTitle>
+              <DialogDescription>
+                Informações adicionais sobre o pedido
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-4">
+              <p className="text-sm text-foreground whitespace-pre-wrap break-words">
+                {observacoesDialog.texto}
+              </p>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </ProtectedRoute>
   );

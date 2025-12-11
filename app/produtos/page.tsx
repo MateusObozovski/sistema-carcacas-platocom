@@ -7,6 +7,7 @@ import { ProtectedRoute } from "@/components/protected-route";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Card,
   CardContent,
@@ -80,12 +81,15 @@ export default function ProdutosPage() {
   >({});
 
   const [formData, setFormData] = useState({
+    codigo: "",
+    codigo_fabricante: "",
     nome: "",
     marca: "",
     tipo: "",
     categoria: "kit",
     preco_base: "",
     desconto_maximo_bt: "",
+    observacoes: "",
     ativo: true,
   });
 
@@ -217,12 +221,15 @@ export default function ProdutosPage() {
     try {
       if (editingProduct) {
         await updateProduct(editingProduct.id, {
+          codigo: formData.codigo.trim() || undefined,
+          codigo_fabricante: formData.codigo_fabricante.trim() || undefined,
           nome: formData.nome.trim(),
           marca: formData.marca,
           tipo: formData.tipo,
           categoria: formData.categoria,
           preco_base: Number(formData.preco_base),
           desconto_maximo_bt: Number(formData.desconto_maximo_bt),
+          observacoes: formData.observacoes.trim() || undefined,
           ativo: formData.ativo,
         });
 
@@ -233,12 +240,15 @@ export default function ProdutosPage() {
         setEditingProduct(null);
       } else {
         await createProduct({
+          codigo: formData.codigo.trim() || undefined,
+          codigo_fabricante: formData.codigo_fabricante.trim() || undefined,
           nome: formData.nome.trim(),
           marca: formData.marca,
           tipo: formData.tipo,
           categoria: formData.categoria,
           preco_base: Number(formData.preco_base),
           desconto_maximo_bt: Number(formData.desconto_maximo_bt),
+          observacoes: formData.observacoes.trim() || undefined,
           ativo: formData.ativo,
         });
 
@@ -250,12 +260,15 @@ export default function ProdutosPage() {
 
       await loadProducts();
       setFormData({
+        codigo: "",
+        codigo_fabricante: "",
         nome: "",
         marca: "",
         tipo: "",
         categoria: "kit",
         preco_base: "",
         desconto_maximo_bt: "",
+        observacoes: "",
         ativo: true,
       });
       setShowCreateDialog(false);
@@ -273,12 +286,15 @@ export default function ProdutosPage() {
   const handleEdit = (product: DatabaseProduct) => {
     setEditingProduct(product);
     setFormData({
+      codigo: product.codigo || "",
+      codigo_fabricante: product.codigo_fabricante || "",
       nome: product.nome,
       marca: product.marca,
       tipo: product.tipo,
       categoria: product.categoria,
       preco_base: product.preco_base.toString(),
       desconto_maximo_bt: product.desconto_maximo_bt.toString(),
+      observacoes: product.observacoes || "",
       ativo: product.ativo,
     });
     setShowCreateDialog(true);
@@ -405,12 +421,15 @@ export default function ProdutosPage() {
             if (!open) {
               setEditingProduct(null);
               setFormData({
+                codigo: "",
+                codigo_fabricante: "",
                 nome: "",
                 marca: "",
                 tipo: "",
                 categoria: "kit",
                 preco_base: "",
                 desconto_maximo_bt: "",
+                observacoes: "",
                 ativo: true,
               });
             }
@@ -427,6 +446,33 @@ export default function ProdutosPage() {
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="codigo">Código</Label>
+                  <Input
+                    id="codigo"
+                    placeholder="Código do produto"
+                    value={formData.codigo}
+                    onChange={(e) =>
+                      setFormData({ ...formData, codigo: e.target.value })
+                    }
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="codigo_fabricante">Código Fabricante</Label>
+                  <Input
+                    id="codigo_fabricante"
+                    placeholder="Código do fabricante"
+                    value={formData.codigo_fabricante}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        codigo_fabricante: e.target.value,
+                      })
+                    }
+                  />
+                </div>
+
                 <div className="space-y-2">
                   <Label htmlFor="nome">Nome do Produto *</Label>
                   <Input
@@ -539,6 +585,20 @@ export default function ProdutosPage() {
                 </div>
               </div>
 
+              <div className="space-y-2">
+                <Label htmlFor="observacoes">Observações</Label>
+                <Textarea
+                  id="observacoes"
+                  placeholder="Observações sobre o produto..."
+                  value={formData.observacoes}
+                  onChange={(e) =>
+                    setFormData({ ...formData, observacoes: e.target.value })
+                  }
+                  rows={3}
+                  className="resize-none"
+                />
+              </div>
+
               <div className="flex items-center gap-2">
                 <input
                   type="checkbox"
@@ -560,12 +620,15 @@ export default function ProdutosPage() {
                     setShowCreateDialog(false);
                     setEditingProduct(null);
                     setFormData({
+                      codigo: "",
+                      codigo_fabricante: "",
                       nome: "",
                       marca: "",
                       tipo: "",
                       categoria: "kit",
                       preco_base: "",
                       desconto_maximo_bt: "",
+                      observacoes: "",
                       ativo: true,
                     });
                   }}
