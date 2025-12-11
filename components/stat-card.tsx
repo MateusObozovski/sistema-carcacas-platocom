@@ -1,18 +1,26 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import type { LucideIcon } from "lucide-react"
+"use client";
+
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import type { LucideIcon } from "lucide-react";
 
 interface StatCardProps {
-  title: string
-  value: string | number
-  icon: LucideIcon
-  description?: string
+  title: string;
+  value: string | number;
+  icon: LucideIcon;
+  description?: string;
   trend?: {
-    value: number
-    isPositive: boolean
-  }
+    value: number;
+    isPositive: boolean;
+  };
 }
 
-export function StatCard({ title, value, icon: Icon, description, trend }: StatCardProps) {
+export function StatCard({
+  title,
+  value,
+  icon: Icon,
+  description,
+  trend,
+}: StatCardProps) {
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -21,14 +29,20 @@ export function StatCard({ title, value, icon: Icon, description, trend }: StatC
       </CardHeader>
       <CardContent>
         <div className="text-2xl font-bold">{value}</div>
-        {description && <p className="text-xs text-muted-foreground">{description}</p>}
+        {description && (
+          <p className="text-xs text-muted-foreground">{description}</p>
+        )}
         {trend && (
-          <p className={`text-xs ${trend.isPositive ? "text-green-500" : "text-red-500"}`}>
+          <p
+            className={`text-xs ${
+              trend.isPositive ? "text-green-500" : "text-red-500"
+            }`}
+          >
             {trend.isPositive ? "+" : ""}
             {trend.value}% em relação ao mês anterior
           </p>
         )}
       </CardContent>
     </Card>
-  )
+  );
 }

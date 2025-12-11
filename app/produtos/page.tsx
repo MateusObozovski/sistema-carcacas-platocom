@@ -1,15 +1,35 @@
-"use client"
+"use client";
 
-import type React from "react"
+import type React from "react";
 
-import { useState, useEffect } from "react"
-import { ProtectedRoute } from "@/components/protected-route"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Badge } from "@/components/ui/badge"
+import { useState, useEffect } from "react";
+import { ProtectedRoute } from "@/components/protected-route";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import {
   Dialog,
   DialogContent,
@@ -17,9 +37,18 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog"
-import { Plus, Search, Edit, Trash2, Filter, ChevronDown, ChevronUp } from "lucide-react"
-import { useToast } from "@/hooks/use-toast"
+} from "@/components/ui/dialog";
+import {
+  Plus,
+  Search,
+  Edit,
+  Trash2,
+  Filter,
+  ChevronDown,
+  ChevronUp,
+  AlertCircle,
+} from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 import {
   getAllProducts,
   createProduct,
@@ -27,24 +56,28 @@ import {
   deleteProduct,
   isProductUsedInOrders,
   type DatabaseProduct,
-} from "@/lib/supabase/database"
-import { isAuthError } from "@/lib/utils"
-import { useRouter } from "next/navigation"
-import { PRODUCT_MARCAS } from "@/lib/types"
+} from "@/lib/supabase/database";
+import { isAuthError } from "@/lib/utils";
+import { useRouter } from "next/navigation";
+import { PRODUCT_MARCAS } from "@/lib/types";
 
 export default function ProdutosPage() {
-  const { toast } = useToast()
-  const router = useRouter()
-  const [products, setProducts] = useState<DatabaseProduct[]>([])
-  const [loading, setLoading] = useState(true)
-  const [searchTerm, setSearchTerm] = useState("")
-  const [filterMarca, setFilterMarca] = useState<string>("all")
-  const [filterTipo, setFilterTipo] = useState<string>("all")
-  const [filterCategoria, setFilterCategoria] = useState<string>("all")
-  const [showCreateDialog, setShowCreateDialog] = useState(false)
-  const [editingProduct, setEditingProduct] = useState<DatabaseProduct | null>(null)
-  const [showFilters, setShowFilters] = useState(false)
-  const [productUsageMap, setProductUsageMap] = useState<Record<string, boolean>>({})
+  const { toast } = useToast();
+  const router = useRouter();
+  const [products, setProducts] = useState<DatabaseProduct[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterMarca, setFilterMarca] = useState<string>("all");
+  const [filterTipo, setFilterTipo] = useState<string>("all");
+  const [filterCategoria, setFilterCategoria] = useState<string>("all");
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<DatabaseProduct | null>(
+    null
+  );
+  const [showFilters, setShowFilters] = useState(false);
+  const [productUsageMap, setProductUsageMap] = useState<
+    Record<string, boolean>
+  >({});
 
   const [formData, setFormData] = useState({
     nome: "",
@@ -54,78 +87,83 @@ export default function ProdutosPage() {
     preco_base: "",
     desconto_maximo_bt: "",
     ativo: true,
-  })
+  });
 
   const loadProducts = async () => {
     try {
-      setLoading(true)
-      const data = await getAllProducts()
-      
-      setProducts(data)
-      
+      setLoading(true);
+      const data = await getAllProducts();
+
+      setProducts(data);
+
       // Verificar quais produtos estão sendo usados em pedidos
-      const usageMap: Record<string, boolean> = {}
+      const usageMap: Record<string, boolean> = {};
       for (const product of data) {
         try {
-          usageMap[product.id] = await isProductUsedInOrders(product.id)
+          usageMap[product.id] = await isProductUsedInOrders(product.id);
         } catch (error: any) {
-          console.error(`[v0] Error checking usage for product ${product.id}:`, error)
+          console.error(
+            `[v0] Error checking usage for product ${product.id}:`,
+            error
+          );
           // Se for erro de auth, não continuar verificando
           if (isAuthError(error)) {
-            throw error
+            throw error;
           }
-          usageMap[product.id] = false
+          usageMap[product.id] = false;
         }
       }
-      
-      setProductUsageMap(usageMap)
+
+      setProductUsageMap(usageMap);
     } catch (error: any) {
-      console.error("[v0] Error loading products:", error)
-      
+      console.error("[v0] Error loading products:", error);
+
       // Verificar se é erro de autenticação
       if (isAuthError(error)) {
         toast({
           title: "Sessão expirada",
           description: "Sua sessão expirou. Por favor, faça login novamente.",
           variant: "destructive",
-        })
+        });
         setTimeout(() => {
-          router.push("/login")
-        }, 2000)
+          router.push("/login");
+        }, 2000);
       } else {
         toast({
           title: "Erro",
-          description: "Não foi possível carregar os produtos. Tente novamente.",
+          description:
+            "Não foi possível carregar os produtos. Tente novamente.",
           variant: "destructive",
-        })
+        });
       }
-      
-      setProducts([])
-      setProductUsageMap({})
+
+      setProducts([]);
+      setProductUsageMap({});
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   useEffect(() => {
-    loadProducts()
-  }, [toast, router])
+    loadProducts();
+  }, [toast, router]);
 
-  const tipos = Array.from(new Set(products.map((p) => p.tipo))).sort()
+  const tipos = Array.from(new Set(products.map((p) => p.tipo))).sort();
 
   const filteredProducts = products.filter((product) => {
     const matchesSearch =
       product.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.marca.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesMarca = filterMarca === "all" || product.marca === filterMarca
-    const matchesTipo = filterTipo === "all" || product.tipo === filterTipo
-    const matchesCategoria = filterCategoria === "all" || product.categoria === filterCategoria
+      product.marca.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesMarca = filterMarca === "all" || product.marca === filterMarca;
+    const matchesTipo = filterTipo === "all" || product.tipo === filterTipo;
+    const matchesCategoria =
+      filterCategoria === "all" || product.categoria === filterCategoria;
 
-    return matchesSearch && matchesMarca && matchesTipo && matchesCategoria
-  })
+    return matchesSearch && matchesMarca && matchesTipo && matchesCategoria;
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+    e.preventDefault();
 
     // Validação dos campos obrigatórios
     if (!formData.nome.trim()) {
@@ -133,8 +171,8 @@ export default function ProdutosPage() {
         title: "Erro",
         description: "O nome do produto é obrigatório",
         variant: "destructive",
-      })
-      return
+      });
+      return;
     }
 
     if (!formData.marca) {
@@ -142,8 +180,8 @@ export default function ProdutosPage() {
         title: "Erro",
         description: "A marca é obrigatória",
         variant: "destructive",
-      })
-      return
+      });
+      return;
     }
 
     if (!formData.tipo) {
@@ -151,8 +189,8 @@ export default function ProdutosPage() {
         title: "Erro",
         description: "O tipo de veículo é obrigatório",
         variant: "destructive",
-      })
-      return
+      });
+      return;
     }
 
     if (!formData.preco_base || Number(formData.preco_base) <= 0) {
@@ -160,17 +198,20 @@ export default function ProdutosPage() {
         title: "Erro",
         description: "O preço base deve ser maior que zero",
         variant: "destructive",
-      })
-      return
+      });
+      return;
     }
 
-    if (!formData.desconto_maximo_bt || Number(formData.desconto_maximo_bt) < 0) {
+    if (
+      !formData.desconto_maximo_bt ||
+      Number(formData.desconto_maximo_bt) < 0
+    ) {
       toast({
         title: "Erro",
         description: "O desconto máximo deve ser maior ou igual a zero",
         variant: "destructive",
-      })
-      return
+      });
+      return;
     }
 
     try {
@@ -183,13 +224,13 @@ export default function ProdutosPage() {
           preco_base: Number(formData.preco_base),
           desconto_maximo_bt: Number(formData.desconto_maximo_bt),
           ativo: formData.ativo,
-        })
+        });
 
         toast({
           title: "Sucesso",
           description: "Produto atualizado com sucesso",
-        })
-        setEditingProduct(null)
+        });
+        setEditingProduct(null);
       } else {
         await createProduct({
           nome: formData.nome.trim(),
@@ -199,15 +240,15 @@ export default function ProdutosPage() {
           preco_base: Number(formData.preco_base),
           desconto_maximo_bt: Number(formData.desconto_maximo_bt),
           ativo: formData.ativo,
-        })
+        });
 
         toast({
           title: "Sucesso",
           description: "Produto cadastrado com sucesso",
-        })
+        });
       }
 
-      await loadProducts()
+      await loadProducts();
       setFormData({
         nome: "",
         marca: "",
@@ -216,21 +257,21 @@ export default function ProdutosPage() {
         preco_base: "",
         desconto_maximo_bt: "",
         ativo: true,
-      })
-      setShowCreateDialog(false)
-      setEditingProduct(null)
+      });
+      setShowCreateDialog(false);
+      setEditingProduct(null);
     } catch (error: any) {
-      console.error("[v0] Error saving product:", error)
+      console.error("[v0] Error saving product:", error);
       toast({
         title: "Erro",
         description: error?.message || "Não foi possível salvar o produto",
         variant: "destructive",
-      })
+      });
     }
-  }
+  };
 
   const handleEdit = (product: DatabaseProduct) => {
-    setEditingProduct(product)
+    setEditingProduct(product);
     setFormData({
       nome: product.nome,
       marca: product.marca,
@@ -239,72 +280,77 @@ export default function ProdutosPage() {
       preco_base: product.preco_base.toString(),
       desconto_maximo_bt: product.desconto_maximo_bt.toString(),
       ativo: product.ativo,
-    })
-    setShowCreateDialog(true)
-  }
+    });
+    setShowCreateDialog(true);
+  };
 
   const handleDelete = async (productId: string) => {
     // Verificar se o produto está sendo usado
-    const isUsed = productUsageMap[productId]
-    
+    const isUsed = productUsageMap[productId];
+
     if (isUsed) {
       toast({
         title: "Não é possível excluir",
-        description: "Este produto já foi usado em pedidos anteriores. Você pode inativá-lo ao invés de excluir.",
+        description:
+          "Este produto já foi usado em pedidos anteriores. Você pode inativá-lo ao invés de excluir.",
         variant: "destructive",
-      })
-      return
+      });
+      return;
     }
 
-    if (!confirm("Tem certeza que deseja excluir este produto?")) return
+    if (!confirm("Tem certeza que deseja excluir este produto?")) return;
 
     try {
-      await deleteProduct(productId)
-      await loadProducts()
+      await deleteProduct(productId);
+      await loadProducts();
       toast({
         title: "Sucesso",
         description: "Produto excluído com sucesso",
-      })
+      });
     } catch (error: any) {
-      console.error("[v0] Error deleting product:", error)
-      const errorMessage = error?.message || "Não foi possível excluir o produto"
-      
+      console.error("[v0] Error deleting product:", error);
+      const errorMessage =
+        error?.message || "Não foi possível excluir o produto";
+
       // Se o erro for sobre produto usado, sugerir inativar
       if (errorMessage.includes("usado em pedidos")) {
         toast({
           title: "Não é possível excluir",
-          description: "Este produto já foi usado em pedidos anteriores. Você pode inativá-lo ao invés de excluir.",
+          description:
+            "Este produto já foi usado em pedidos anteriores. Você pode inativá-lo ao invés de excluir.",
           variant: "destructive",
-        })
+        });
       } else {
         toast({
           title: "Erro",
           description: errorMessage,
           variant: "destructive",
-        })
+        });
       }
     }
-  }
+  };
 
   const handleToggleActive = async (product: DatabaseProduct) => {
     try {
       await updateProduct(product.id, {
         ativo: !product.ativo,
-      })
-      await loadProducts()
+      });
+      await loadProducts();
       toast({
         title: "Sucesso",
-        description: `Produto ${!product.ativo ? "ativado" : "inativado"} com sucesso`,
-      })
+        description: `Produto ${
+          !product.ativo ? "ativado" : "inativado"
+        } com sucesso`,
+      });
     } catch (error: any) {
-      console.error("[v0] Error toggling product active status:", error)
+      console.error("[v0] Error toggling product active status:", error);
       toast({
         title: "Erro",
         description: "Não foi possível atualizar o status do produto",
         variant: "destructive",
-      })
+      });
     }
-  }
+  };
 
   const getCategoryLabel = (categoria: string) => {
     const labels: Record<string, string> = {
@@ -313,57 +359,71 @@ export default function ProdutosPage() {
       mancal: "Mancal",
       disco: "Disco",
       outros: "Outros",
-    }
-    return labels[categoria] || categoria
-  }
+    };
+    return labels[categoria] || categoria;
+  };
 
   if (loading) {
     return (
-      <ProtectedRoute allowedRoles={["admin", "Gerente", "Coordenador", "Vendedor"]}>
-        <main className="p-4 md:p-6">
-          <div className="text-center py-8">Carregando produtos...</div>
-        </main>
+      <ProtectedRoute
+        allowedRoles={["admin", "Gerente", "Coordenador", "Vendedor"]}
+      >
+        <div className="text-center py-8">Carregando produtos...</div>
       </ProtectedRoute>
-    )
+    );
   }
 
   return (
-    <ProtectedRoute allowedRoles={["admin", "Gerente", "Coordenador", "Vendedor"]}>
-      <main className="p-4 md:p-6">
-        <div className="mb-4 md:mb-6">
+    <ProtectedRoute
+      allowedRoles={["admin", "Gerente", "Coordenador", "Vendedor"]}
+    >
+      <div className="space-y-6">
+        <div>
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-foreground md:text-3xl">Produtos</h1>
+              <h1 className="text-2xl font-bold text-foreground md:text-3xl">
+                Produtos
+              </h1>
               <p className="text-sm text-muted-foreground md:text-base">
                 Gerencie o catálogo de produtos por Marca, Tipo e Categoria
               </p>
             </div>
-            <Button onClick={() => setShowCreateDialog(true)} className="gap-2 w-full md:w-auto">
+            <Button
+              onClick={() => setShowCreateDialog(true)}
+              className="gap-2 w-full md:w-auto"
+            >
               <Plus className="h-4 w-4" />
               Novo Produto
             </Button>
           </div>
         </div>
 
-        <Dialog open={showCreateDialog} onOpenChange={(open) => {
-          setShowCreateDialog(open)
-          if (!open) {
-            setEditingProduct(null)
-            setFormData({
-              nome: "",
-              marca: "",
-              tipo: "",
-              categoria: "kit",
-              preco_base: "",
-              desconto_maximo_bt: "",
-              ativo: true,
-            })
-          }
-        }}>
+        <Dialog
+          open={showCreateDialog}
+          onOpenChange={(open) => {
+            setShowCreateDialog(open);
+            if (!open) {
+              setEditingProduct(null);
+              setFormData({
+                nome: "",
+                marca: "",
+                tipo: "",
+                categoria: "kit",
+                preco_base: "",
+                desconto_maximo_bt: "",
+                ativo: true,
+              });
+            }
+          }}
+        >
           <DialogContent className="sm:max-w-[600px]">
             <DialogHeader>
-              <DialogTitle>{editingProduct ? "Editar Produto" : "Novo Produto"}</DialogTitle>
-              <DialogDescription>Preencha os dados do produto</DialogDescription>
+              <DialogTitle>
+                {editingProduct ? "Editar Produto" : "Novo Produto"}
+              </DialogTitle>
+              <DialogDescription>
+                Preencha os dados do produto
+              </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid gap-4 md:grid-cols-2">
@@ -373,7 +433,9 @@ export default function ProdutosPage() {
                     id="nome"
                     placeholder="Ex: Kit Embreagem Mercedes 1620"
                     value={formData.nome}
-                    onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
+                    onChange={(e) =>
+                      setFormData({ ...formData, nome: e.target.value })
+                    }
                     required
                   />
                 </div>
@@ -382,7 +444,9 @@ export default function ProdutosPage() {
                   <Label htmlFor="marca">Marca *</Label>
                   <Select
                     value={formData.marca}
-                    onValueChange={(value) => setFormData({ ...formData, marca: value })}
+                    onValueChange={(value) =>
+                      setFormData({ ...formData, marca: value })
+                    }
                     required
                   >
                     <SelectTrigger>
@@ -402,7 +466,9 @@ export default function ProdutosPage() {
                   <Label htmlFor="tipo">Tipo Veículo *</Label>
                   <Select
                     value={formData.tipo}
-                    onValueChange={(value) => setFormData({ ...formData, tipo: value })}
+                    onValueChange={(value) =>
+                      setFormData({ ...formData, tipo: value })
+                    }
                     required
                   >
                     <SelectTrigger>
@@ -419,7 +485,9 @@ export default function ProdutosPage() {
                   <Label htmlFor="categoria">Categoria *</Label>
                   <Select
                     value={formData.categoria}
-                    onValueChange={(value) => setFormData({ ...formData, categoria: value })}
+                    onValueChange={(value) =>
+                      setFormData({ ...formData, categoria: value })
+                    }
                     required
                   >
                     <SelectTrigger>
@@ -443,20 +511,29 @@ export default function ProdutosPage() {
                     step="0.01"
                     min="0.01"
                     value={formData.preco_base}
-                    onChange={(e) => setFormData({ ...formData, preco_base: e.target.value })}
+                    onChange={(e) =>
+                      setFormData({ ...formData, preco_base: e.target.value })
+                    }
                     required
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="desconto_maximo_bt">Desconto Máximo (%) *</Label>
+                  <Label htmlFor="desconto_maximo_bt">
+                    Desconto Máximo (%) *
+                  </Label>
                   <Input
                     id="desconto_maximo_bt"
                     type="number"
                     min="0"
                     max="100"
                     value={formData.desconto_maximo_bt}
-                    onChange={(e) => setFormData({ ...formData, desconto_maximo_bt: e.target.value })}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        desconto_maximo_bt: e.target.value,
+                      })
+                    }
                     required
                   />
                 </div>
@@ -467,7 +544,9 @@ export default function ProdutosPage() {
                   type="checkbox"
                   id="ativo"
                   checked={formData.ativo}
-                  onChange={(e) => setFormData({ ...formData, ativo: e.target.checked })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, ativo: e.target.checked })
+                  }
                   className="h-4 w-4"
                 />
                 <Label htmlFor="ativo">Produto Ativo</Label>
@@ -478,8 +557,8 @@ export default function ProdutosPage() {
                   type="button"
                   variant="outline"
                   onClick={() => {
-                    setShowCreateDialog(false)
-                    setEditingProduct(null)
+                    setShowCreateDialog(false);
+                    setEditingProduct(null);
                     setFormData({
                       nome: "",
                       marca: "",
@@ -488,7 +567,7 @@ export default function ProdutosPage() {
                       preco_base: "",
                       desconto_maximo_bt: "",
                       ativo: true,
-                    })
+                    });
                   }}
                 >
                   Cancelar
@@ -506,7 +585,9 @@ export default function ProdutosPage() {
             <div className="flex flex-col gap-4">
               <div className="flex flex-col gap-3">
                 <div className="flex items-center justify-between">
-                  <CardTitle className="text-lg md:text-xl">Produtos ({filteredProducts.length})</CardTitle>
+                  <CardTitle className="text-lg md:text-xl">
+                    Produtos ({filteredProducts.length})
+                  </CardTitle>
                 </div>
 
                 <div className="relative">
@@ -528,11 +609,19 @@ export default function ProdutosPage() {
                     <Filter className="h-4 w-4" />
                     Filtros
                   </span>
-                  {showFilters ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  {showFilters ? (
+                    <ChevronUp className="h-4 w-4" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4" />
+                  )}
                 </Button>
               </div>
 
-              <div className={`flex-col gap-3 ${showFilters ? "flex" : "hidden"} md:flex md:flex-row md:items-center`}>
+              <div
+                className={`flex-col gap-3 ${
+                  showFilters ? "flex" : "hidden"
+                } md:flex md:flex-row md:items-center`}
+              >
                 <Filter className="hidden h-4 w-4 text-muted-foreground md:block" />
                 <Select value={filterMarca} onValueChange={setFilterMarca}>
                   <SelectTrigger className="w-full md:w-40">
@@ -562,7 +651,10 @@ export default function ProdutosPage() {
                   </SelectContent>
                 </Select>
 
-                <Select value={filterCategoria} onValueChange={setFilterCategoria}>
+                <Select
+                  value={filterCategoria}
+                  onValueChange={setFilterCategoria}
+                >
                   <SelectTrigger className="w-full md:w-40">
                     <SelectValue placeholder="Categoria" />
                   </SelectTrigger>
@@ -576,15 +668,17 @@ export default function ProdutosPage() {
                   </SelectContent>
                 </Select>
 
-                {(filterMarca !== "all" || filterTipo !== "all" || filterCategoria !== "all") && (
+                {(filterMarca !== "all" ||
+                  filterTipo !== "all" ||
+                  filterCategoria !== "all") && (
                   <Button
                     variant="ghost"
                     size="sm"
                     className="w-full md:w-auto"
                     onClick={() => {
-                      setFilterMarca("all")
-                      setFilterTipo("all")
-                      setFilterCategoria("all")
+                      setFilterMarca("all");
+                      setFilterTipo("all");
+                      setFilterCategoria("all");
                     }}
                   >
                     Limpar Filtros
@@ -601,12 +695,17 @@ export default function ProdutosPage() {
                     <div className="flex flex-col gap-3">
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex-1">
-                          <h3 className="font-semibold text-foreground text-base leading-tight">{product.nome}</h3>
+                          <h3 className="font-semibold text-foreground text-base leading-tight">
+                            {product.nome}
+                          </h3>
                           <div className="mt-1 flex flex-wrap gap-2">
                             <Badge variant="outline" className="text-xs">
                               {getCategoryLabel(product.categoria)}
                             </Badge>
-                            <Badge variant={product.ativo ? "default" : "secondary"} className="text-xs">
+                            <Badge
+                              variant={product.ativo ? "default" : "secondary"}
+                              className="text-xs"
+                            >
                               {product.ativo ? "Ativo" : "Inativo"}
                             </Badge>
                           </div>
@@ -616,21 +715,34 @@ export default function ProdutosPage() {
                       <div className="grid grid-cols-2 gap-2 text-sm">
                         <div>
                           <span className="text-muted-foreground">Marca:</span>
-                          <p className="font-medium text-foreground">{product.marca}</p>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground">Tipo:</span>
-                          <p className="font-medium text-foreground">{product.tipo}</p>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground">Preço Base:</span>
-                          <p className="font-semibold text-foreground">
-                            R$ {product.preco_base.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                          <p className="font-medium text-foreground">
+                            {product.marca}
                           </p>
                         </div>
                         <div>
-                          <span className="text-muted-foreground">Desc. Máx:</span>
-                          <p className="font-medium text-foreground">{product.desconto_maximo_bt}%</p>
+                          <span className="text-muted-foreground">Tipo:</span>
+                          <p className="font-medium text-foreground">
+                            {product.tipo}
+                          </p>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">
+                            Preço Base:
+                          </span>
+                          <p className="font-semibold text-foreground">
+                            R${" "}
+                            {product.preco_base.toLocaleString("pt-BR", {
+                              minimumFractionDigits: 2,
+                            })}
+                          </p>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">
+                            Desc. Máx:
+                          </span>
+                          <p className="font-medium text-foreground">
+                            {product.desconto_maximo_bt}%
+                          </p>
                         </div>
                       </div>
 
@@ -672,45 +784,115 @@ export default function ProdutosPage() {
               ))}
 
               {filteredProducts.length === 0 && (
-                <div className="text-center py-8 text-muted-foreground">Nenhum produto encontrado</div>
+                <div className="text-center py-8 text-muted-foreground">
+                  Nenhum produto encontrado
+                </div>
               )}
             </div>
 
-            <div className="hidden md:block overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-border">
-                    <th className="pb-3 text-left text-sm font-medium text-muted-foreground">Produto</th>
-                    <th className="pb-3 text-left text-sm font-medium text-muted-foreground">Marca</th>
-                    <th className="pb-3 text-left text-sm font-medium text-muted-foreground">Tipo</th>
-                    <th className="pb-3 text-left text-sm font-medium text-muted-foreground">Categoria</th>
-                    <th className="pb-3 text-left text-sm font-medium text-muted-foreground">Preço Base</th>
-                    <th className="pb-3 text-left text-sm font-medium text-muted-foreground">Desconto Máx.</th>
-                    <th className="pb-3 text-left text-sm font-medium text-muted-foreground">Status</th>
-                    <th className="pb-3 text-left text-sm font-medium text-muted-foreground">Ações</th>
-                  </tr>
-                </thead>
-                <tbody>
+            <div className="hidden md:block">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[80px] px-3 py-4 text-sm font-medium">
+                      Código
+                    </TableHead>
+                    <TableHead className="w-[250px] px-3 py-4 text-sm font-medium">
+                      Produto
+                    </TableHead>
+                    <TableHead className="w-[100px] px-3 py-4 text-sm font-medium">
+                      Cód. Fabr.
+                    </TableHead>
+                    <TableHead className="w-[110px] px-3 py-4 text-sm font-medium">
+                      Marca
+                    </TableHead>
+                    <TableHead className="w-[90px] px-3 py-4 text-sm font-medium">
+                      Tipo
+                    </TableHead>
+                    <TableHead className="w-[100px] px-3 py-4 text-sm font-medium">
+                      Categoria
+                    </TableHead>
+                    <TableHead className="w-[110px] px-3 py-4 text-sm font-medium">
+                      Preço
+                    </TableHead>
+                    <TableHead className="w-[90px] px-3 py-4 text-sm font-medium">
+                      Desc. Máx.
+                    </TableHead>
+                    <TableHead className="w-[85px] px-3 py-4 text-sm font-medium">
+                      Status
+                    </TableHead>
+                    <TableHead className="w-[60px] px-3 py-4 text-sm font-medium">
+                      Obs.
+                    </TableHead>
+                    <TableHead className="w-[100px] px-3 py-4 text-sm font-medium">
+                      Ações
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {filteredProducts.map((product) => (
-                    <tr key={product.id} className="border-b border-border">
-                      <td className="py-4 text-sm font-medium text-foreground">{product.nome}</td>
-                      <td className="py-4 text-sm text-muted-foreground">{product.marca}</td>
-                      <td className="py-4 text-sm text-muted-foreground">{product.tipo}</td>
-                      <td className="py-4 text-sm text-muted-foreground">
-                        <Badge variant="outline">{getCategoryLabel(product.categoria)}</Badge>
-                      </td>
-                      <td className="py-4 text-sm text-foreground">
-                        R$ {product.preco_base.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                      </td>
-                      <td className="py-4 text-sm text-muted-foreground">{product.desconto_maximo_bt}%</td>
-                      <td className="py-4">
-                        <Badge variant={product.ativo ? "default" : "secondary"}>
+                    <TableRow key={product.id}>
+                      <TableCell className="px-3 py-4 text-sm font-medium">
+                        {product.codigo || "-"}
+                      </TableCell>
+                      <TableCell className="px-3 py-4 text-sm font-medium">
+                        <div className="line-clamp-2 wrap-break-word">
+                          {product.nome}
+                        </div>
+                      </TableCell>
+                      <TableCell className="px-3 py-4 text-sm">
+                        {product.codigo_fabricante || "-"}
+                      </TableCell>
+                      <TableCell className="px-3 py-4 text-sm">
+                        {product.marca}
+                      </TableCell>
+                      <TableCell className="px-3 py-4 text-sm">
+                        {product.tipo}
+                      </TableCell>
+                      <TableCell className="px-3 py-4">
+                        <Badge variant="outline" className="text-xs">
+                          {getCategoryLabel(product.categoria)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="px-3 py-4 text-sm font-medium">
+                        R${" "}
+                        {product.preco_base.toLocaleString("pt-BR", {
+                          minimumFractionDigits: 2,
+                        })}
+                      </TableCell>
+                      <TableCell className="px-3 py-4 text-sm">
+                        {product.desconto_maximo_bt}%
+                      </TableCell>
+                      <TableCell className="px-3 py-4">
+                        <Badge
+                          variant={product.ativo ? "default" : "secondary"}
+                          className="text-xs"
+                        >
                           {product.ativo ? "Ativo" : "Inativo"}
                         </Badge>
-                      </td>
-                      <td className="py-4">
-                        <div className="flex gap-2">
-                          <Button size="sm" variant="ghost" onClick={() => handleEdit(product)}>
+                      </TableCell>
+                      <TableCell className="px-3 py-4">
+                        {product.observacoes ? (
+                          <div className="relative inline-block group">
+                            <AlertCircle className="h-4 w-4 text-muted-foreground cursor-help hover:text-foreground transition-colors" />
+                            <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50 pointer-events-none">
+                              <div className="bg-popover text-popover-foreground text-sm rounded-md border border-border shadow-lg p-3 max-w-xs whitespace-normal wrap-break-word">
+                                {product.observacoes}
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="px-3 py-4">
+                        <div className="flex gap-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleEdit(product)}
+                            className="h-8 w-8 p-0"
+                          >
                             <Edit className="h-4 w-4" />
                           </Button>
                           {productUsageMap[product.id] ? (
@@ -719,6 +901,7 @@ export default function ProdutosPage() {
                               variant="ghost"
                               onClick={() => handleToggleActive(product)}
                               title="Produto usado em pedidos - apenas inativar"
+                              className="h-8 px-2 text-xs"
                             >
                               {product.ativo ? "Inativar" : "Ativar"}
                             </Button>
@@ -726,22 +909,22 @@ export default function ProdutosPage() {
                             <Button
                               size="sm"
                               variant="ghost"
-                              className="text-destructive"
+                              className="text-destructive h-8 w-8 p-0"
                               onClick={() => handleDelete(product.id)}
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
                           )}
                         </div>
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
           </CardContent>
         </Card>
-      </main>
+      </div>
     </ProtectedRoute>
-  )
+  );
 }
