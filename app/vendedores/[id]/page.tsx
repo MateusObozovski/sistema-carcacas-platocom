@@ -108,7 +108,9 @@ export default function VendedorDetalhePage() {
           </Button>
           <div>
             <h2 className="text-3xl font-bold tracking-tight">{vendedor.nome}</h2>
-            <p className="text-muted-foreground">Detalhes e histórico do vendedor</p>
+            <p className="text-muted-foreground">
+              {vendedor.email} · Detalhes e histórico do vendedor
+            </p>
           </div>
         </div>
 

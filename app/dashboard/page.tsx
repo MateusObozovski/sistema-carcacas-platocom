@@ -208,7 +208,7 @@ export default function DashboardPage() {
                               className="hover:underline"
                               prefetch={false}
                             >
-                              {vendedor.nome}
+                              {vendedor.nome?.split(" ")[0] || vendedor.nome}
                             </Link>
                           </TableCell>
                           <TableCell className="text-right">
@@ -234,6 +234,7 @@ export default function DashboardPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Pedido</TableHead>
+                      <TableHead>Pedido Origem</TableHead>
                       <TableHead>Cliente</TableHead>
                       <TableHead>Dias</TableHead>
                       <TableHead>Status</TableHead>
@@ -254,6 +255,9 @@ export default function DashboardPage() {
                             >
                               {pedido.numero_pedido}
                             </Link>
+                          </TableCell>
+                          <TableCell className="font-mono text-xs text-muted-foreground">
+                            {pedido.numero_pedido_origem || "-"}
                           </TableCell>
                           <TableCell>{cliente?.nome}</TableCell>
                           <TableCell>
@@ -473,6 +477,7 @@ export default function DashboardPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Pedido</TableHead>
+                      <TableHead>Pedido Origem</TableHead>
                       <TableHead>Cliente</TableHead>
                       <TableHead>Dias</TableHead>
                       <TableHead>Status</TableHead>
@@ -493,6 +498,9 @@ export default function DashboardPage() {
                             >
                               {pedido.numero_pedido}
                             </Link>
+                          </TableCell>
+                          <TableCell className="font-mono text-xs text-muted-foreground">
+                            {pedido.numero_pedido_origem || "-"}
                           </TableCell>
                           <TableCell>{cliente?.nome}</TableCell>
                           <TableCell>

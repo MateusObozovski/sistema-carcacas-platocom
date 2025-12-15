@@ -22,7 +22,12 @@ import {
 import { StatusBadge } from "@/components/status-badge";
 import { useAuth } from "@/lib/auth-context";
 import { createClient } from "@/lib/supabase/client";
-import { getVendedores, getClients, getOrders } from "@/lib/supabase/database";
+import {
+  getVendedores,
+  getClients,
+  getOrders,
+  getMerchandiseEntriesWithLinks,
+} from "@/lib/supabase/database";
 import Link from "next/link";
 import { Search, AlertCircle } from "lucide-react";
 import {
@@ -49,6 +54,9 @@ export default function PedidosPage() {
   const [empresaFiltro, setEmpresaFiltro] = useState<string>("todos");
   const [pedidoOrigemFiltro, setPedidoOrigemFiltro] = useState<string>("");
   const [pedidos, setPedidos] = useState<any[]>([]);
+  const [notaPorPedido, setNotaPorPedido] = useState<Record<string, string>>(
+    {}
+  );
   const [vendedores, setVendedores] = useState<any[]>([]);
   const [clientes, setClientes] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -85,7 +93,39 @@ export default function PedidosPage() {
           return;
         }
 
-        setPedidos(pedidosData || []);
+        const pedidosLista = pedidosData || [];
+        setPedidos(pedidosLista);
+
+        // Buscar notas fiscais vinculadas aos pedidos via entradas de mercadoria
+        try {
+          const entradas = await getMerchandiseEntriesWithLinks(
+            user.id,
+            user.role
+          );
+
+          const mapaNotas: Record<string, string> = {};
+
+          (entradas || []).forEach((entrada: any) => {
+            const numeroNota = entrada.numero_nota_fiscal as string | null;
+            if (!numeroNota) return;
+
+            (entrada.merchandise_entry_items || []).forEach((item: any) => {
+              const orderInfo = item.order_items?.orders;
+              const orderId = orderInfo?.id as string | undefined;
+
+              if (orderId && !mapaNotas[orderId]) {
+                mapaNotas[orderId] = numeroNota;
+              }
+            });
+          });
+
+          setNotaPorPedido(mapaNotas);
+        } catch (error) {
+          console.error(
+            "[v0] Error fetching merchandise entries with links:",
+            error
+          );
+        }
 
         // Buscar vendedores para o filtro (apenas para roles que podem ver todos)
         if (user.role !== "Vendedor") {
@@ -227,7 +267,7 @@ export default function PedidosPage() {
                     <SelectItem value="todos">Todos os vendedores</SelectItem>
                     {vendedores.map((vendedor) => (
                       <SelectItem key={vendedor.id} value={vendedor.id}>
-                        {vendedor.nome}
+                        {vendedor.nome?.split(" ")[0] || vendedor.nome}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -282,29 +322,30 @@ export default function PedidosPage() {
               </div>
             ) : (
               <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Número</TableHead>
-                    <TableHead>Cliente</TableHead>
-                    <TableHead>Nº Pedido Origem</TableHead>
-                    <TableHead>Empresa</TableHead>
-                    <TableHead className="text-right">Valor Total</TableHead>
-                    <TableHead className="text-right">Débito</TableHead>
-                    <TableHead>Data</TableHead>
-                    <TableHead>Status</TableHead>
-                    {(user?.role === "admin" ||
-                      user?.role === "Gerente" ||
-                      user?.role === "Coordenador") && (
-                      <TableHead>Vendedor</TableHead>
-                    )}
-                    <TableHead>Obs.</TableHead>
-                  </TableRow>
-                </TableHeader>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Número</TableHead>
+                  <TableHead>Cliente</TableHead>
+                  <TableHead>Nº Pedido Origem</TableHead>
+                  <TableHead>Nº Nota Fiscal</TableHead>
+                  <TableHead>Empresa</TableHead>
+                  <TableHead className="text-right">Valor Total</TableHead>
+                  <TableHead className="text-right">Débito</TableHead>
+                  <TableHead>Data</TableHead>
+                  <TableHead>Status</TableHead>
+                  {(user?.role === "admin" ||
+                    user?.role === "Gerente" ||
+                    user?.role === "Coordenador") && (
+                    <TableHead>Vendedor</TableHead>
+                  )}
+                  <TableHead>Obs.</TableHead>
+                </TableRow>
+              </TableHeader>
                 <TableBody>
                   {pedidosFiltrados.length === 0 ? (
                     <TableRow>
                       <TableCell
-                        colSpan={user?.role === "Vendedor" ? 9 : 10}
+                        colSpan={user?.role === "Vendedor" ? 10 : 11}
                         className="text-center text-muted-foreground"
                       >
                         Nenhum pedido encontrado
@@ -327,6 +368,9 @@ export default function PedidosPage() {
                           {pedido.numero_pedido_origem || "-"}
                         </TableCell>
                         <TableCell className="text-sm">
+                          {notaPorPedido[pedido.id] || "-"}
+                        </TableCell>
+                        <TableCell className="text-sm">
                           {pedido.empresa || "-"}
                         </TableCell>
                         <TableCell className="text-right">
@@ -346,7 +390,11 @@ export default function PedidosPage() {
                         {(user?.role === "admin" ||
                           user?.role === "Gerente" ||
                           user?.role === "Coordenador") && (
-                          <TableCell>{pedido.profiles?.nome || "-"}</TableCell>
+                          <TableCell>
+                            {pedido.profiles?.nome
+                              ? pedido.profiles.nome.split(" ")[0]
+                              : "-"}
+                          </TableCell>
                         )}
                         <TableCell>
                           {pedido.observacoes ? (

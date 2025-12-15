@@ -258,15 +258,19 @@ export default function NovaVendaPage() {
     e.preventDefault();
     setIsSubmitting(true);
 
+    const numeroPedidoOrigemTrimmed = numeroPedidoOrigem.trim();
+
     // Buscar o vendedor_id do cliente selecionado
     const cliente = clientes.find((c) => c.id === clienteId);
     const vendedorResponsavel = cliente?.vendedor_id;
 
-    if (!clienteId || items.length === 0 || !vendedorResponsavel) {
+    if (!clienteId || items.length === 0 || !vendedorResponsavel || !numeroPedidoOrigemTrimmed) {
       toast({
         title: "Erro",
         description:
-          items.length === 0
+          !numeroPedidoOrigemTrimmed
+            ? "Informe o número do pedido origem"
+            : items.length === 0
             ? "Adicione pelo menos um item"
             : !clienteId
             ? "Selecione um cliente"
@@ -290,7 +294,7 @@ export default function NovaVendaPage() {
         status: "Aguardando Devolução",
         data_venda: new Date().toISOString(),
         observacoes: observacoes || undefined,
-        numero_pedido_origem: numeroPedidoOrigem.trim() || undefined,
+        numero_pedido_origem: numeroPedidoOrigemTrimmed,
         empresa: empresa && empresa !== "none" ? empresa : undefined,
       };
 
@@ -422,13 +426,14 @@ export default function NovaVendaPage() {
                   htmlFor="numeroPedidoOrigem"
                   className="text-base font-medium"
                 >
-                  Nº Pedido Origem
+                  Nº Pedido Origem *
                 </Label>
                 <Input
                   id="numeroPedidoOrigem"
                   placeholder="Ex: PED-12345"
                   value={numeroPedidoOrigem}
                   onChange={(e) => setNumeroPedidoOrigem(e.target.value)}
+                  required
                   className="h-11 text-base"
                 />
               </div>
@@ -643,7 +648,12 @@ export default function NovaVendaPage() {
                 <div className="flex justify-end mt-4">
                   <Button
                     type="submit"
-                    disabled={isSubmitting || !clienteId || items.length === 0}
+                    disabled={
+                      isSubmitting ||
+                      !clienteId ||
+                      items.length === 0 ||
+                      !numeroPedidoOrigem.trim()
+                    }
                     className="bg-orange-500 hover:bg-orange-600 text-white h-12 px-10 text-base font-semibold"
                   >
                     {isSubmitting ? "Processando..." : "Salvar Venda"}
