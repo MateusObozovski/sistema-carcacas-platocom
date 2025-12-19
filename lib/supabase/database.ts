@@ -12,7 +12,8 @@ export interface DatabaseProduct {
   codigo_fabricante?: string;
   observacoes?: string;
   preco_base: number;
-  desconto_maximo_bt: number;
+  desconto_maximo_bt: number; // Manter para compatibilidade, mas será calculado dinamicamente
+  carcass_value: number; // Valor fixo da carcaça em reais
   ativo: boolean;
   created_at: string;
 }
@@ -56,6 +57,7 @@ export interface DatabaseOrderItem {
   desconto_percentual: number;
   preco_final: number;
   debito_carcaca: number;
+  retained_revenue_carcass: number; // Valor gerado (lucro) na negociação da carcaça
   tipo_venda: string;
 }
 
@@ -509,6 +511,42 @@ export async function generateOrderNumber() {
   } else {
     // New year, start from 1
     return `PED-${year}-0001`;
+  }
+}
+
+export async function generateRelatorioEntradaNumber() {
+  const supabase = createClient();
+
+  // Get the last relatório entrada number
+  const { data, error } = await supabase
+    .from("merchandise_entries")
+    .select("numero_nota_fiscal")
+    .like("numero_nota_fiscal", "REL-%")
+    .order("created_at", { ascending: false })
+    .limit(1);
+
+  if (error) {
+    console.error("[v0] Error fetching last relatorio entrada:", error);
+    // Return default if error
+    return `REL-${new Date().getFullYear()}-0001`;
+  }
+
+  if (!data || data.length === 0) {
+    return `REL-${new Date().getFullYear()}-0001`;
+  }
+
+  // Extract number from last relatório (format: REL-YYYY-NNNN)
+  const lastNumber = data[0].numero_nota_fiscal;
+  const parts = lastNumber.split("-");
+  const year = new Date().getFullYear().toString();
+
+  if (parts[1] === year) {
+    // Same year, increment
+    const num = Number.parseInt(parts[2]) + 1;
+    return `REL-${year}-${num.toString().padStart(4, "0")}`;
+  } else {
+    // New year, start from 1
+    return `REL-${year}-0001`;
   }
 }
 

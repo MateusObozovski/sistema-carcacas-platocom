@@ -1,101 +1,120 @@
-"use client"
+"use client";
 
-import { useState, useEffect } from "react"
-import { useParams } from "next/navigation"
-import { ProtectedRoute } from "@/components/protected-route"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { StatusBadge } from "@/components/status-badge"
-import { getClientById, getOrders, createClient } from "@/lib/supabase/database"
-import { createClient as createSupabaseClient } from "@/lib/supabase/client"
-import Link from "next/link"
-import { ArrowLeft, DollarSign, Package, ShoppingCart } from "lucide-react"
-import { StatCard } from "@/components/stat-card"
+import { useState, useEffect } from "react";
+import { useParams } from "next/navigation";
+import { ProtectedRoute } from "@/components/protected-route";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { StatusBadge } from "@/components/status-badge";
+import {
+  getClientById,
+  getOrders,
+  createClient,
+} from "@/lib/supabase/database";
+import { createClient as createSupabaseClient } from "@/lib/supabase/client";
+import Link from "next/link";
+import { ArrowLeft, DollarSign, Package, ShoppingCart } from "lucide-react";
+import { StatCard } from "@/components/stat-card";
 
 // Helper function to map database status to StatusBadge status
-function mapStatusToBadge(status: string): "aguardando" | "atrasado" | "devolvida" | "perda-total" {
-  if (status === "Aguardando Devolução") return "aguardando"
-  if (status === "Atrasado") return "atrasado"
-  if (status === "Concluído") return "devolvida"
-  if (status === "Perda Total") return "perda-total"
-  return "aguardando"
+function mapStatusToBadge(
+  status: string
+): "aguardando" | "atrasado" | "devolvida" | "perda-total" {
+  if (status === "Aguardando Devolução") return "aguardando";
+  if (status === "Atrasado") return "atrasado";
+  if (status === "Concluído") return "devolvida";
+  if (status === "Perda Total") return "perda-total";
+  return "aguardando";
 }
 
 export default function ClienteDetalhePage() {
-  const params = useParams()
-  const [cliente, setCliente] = useState<any>(null)
-  const [vendedor, setVendedor] = useState<any>(null)
-  const [pedidosCliente, setPedidosCliente] = useState<any[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const supabase = createSupabaseClient()
+  const params = useParams();
+  const [cliente, setCliente] = useState<any>(null);
+  const [vendedor, setVendedor] = useState<any>(null);
+  const [pedidosCliente, setPedidosCliente] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const supabase = createSupabaseClient();
 
   useEffect(() => {
     const loadData = async () => {
-      if (!params.id || typeof params.id !== "string") return
+      if (!params.id || typeof params.id !== "string") return;
 
       try {
-        setIsLoading(true)
-        const clienteData = await getClientById(params.id)
-        if (!clienteData) return
+        setIsLoading(true);
+        const clienteData = await getClientById(params.id);
+        if (!clienteData) return;
 
-        setCliente(clienteData)
+        setCliente(clienteData);
 
         // Get vendedor
         const { data: vendedorData } = await supabase
           .from("profiles")
           .select("id, nome")
           .eq("id", clienteData.vendedor_id)
-          .single()
+          .single();
 
-        setVendedor(vendedorData)
+        setVendedor(vendedorData);
 
         // Get orders for this client
         const { data: ordersData } = await supabase
           .from("orders")
           .select("*, order_items (*)")
           .eq("cliente_id", params.id)
-          .order("data_venda", { ascending: false })
+          .order("data_venda", { ascending: false });
 
-        setPedidosCliente(ordersData || [])
+        setPedidosCliente(ordersData || []);
       } catch (error) {
-        console.error("[v0] Error loading cliente details:", error)
+        console.error("[v0] Error loading cliente details:", error);
       } finally {
-        setIsLoading(false)
+        setIsLoading(false);
       }
-    }
+    };
 
-    loadData()
-  }, [params.id, supabase])
+    loadData();
+  }, [params.id, supabase]);
 
   const pedidosPendentes = pedidosCliente.filter(
-    (p) => p.status === "Aguardando Devolução" || p.status === "Atrasado",
-  )
+    (p) => p.status === "Aguardando Devolução" || p.status === "Atrasado"
+  );
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat("pt-BR", {
       style: "currency",
       currency: "BRL",
-    }).format(value)
-  }
+    }).format(value);
+  };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("pt-BR")
-  }
+    return new Date(dateString).toLocaleDateString("pt-BR");
+  };
 
   const getDaysPending = (dataCriacao: string) => {
-    const created = new Date(dataCriacao)
-    const now = new Date()
-    const diff = now.getTime() - created.getTime()
-    return Math.floor(diff / (1000 * 60 * 60 * 24))
-  }
+    const created = new Date(dataCriacao);
+    const now = new Date();
+    const diff = now.getTime() - created.getTime();
+    return Math.floor(diff / (1000 * 60 * 60 * 24));
+  };
 
   if (isLoading) {
     return (
       <ProtectedRoute>
         <div className="text-center text-muted-foreground">Carregando...</div>
       </ProtectedRoute>
-    )
+    );
   }
 
   if (!cliente) {
@@ -108,7 +127,7 @@ export default function ClienteDetalhePage() {
           </Button>
         </div>
       </ProtectedRoute>
-    )
+    );
   }
 
   return (
@@ -121,12 +140,14 @@ export default function ClienteDetalhePage() {
             </Link>
           </Button>
           <div>
-            <h2 className="text-3xl font-bold tracking-tight">{cliente.nome}</h2>
+            <h2 className="text-3xl font-bold tracking-tight">
+              {cliente.nome}
+            </h2>
             <p className="text-muted-foreground">Vendedor: {vendedor?.nome}</p>
           </div>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-4">
           <StatCard
             title="Débito Total"
             value={formatCurrency(cliente.debitoTotal)}
@@ -145,53 +166,97 @@ export default function ClienteDetalhePage() {
             icon={ShoppingCart}
             description="Pedidos realizados"
           />
+          <StatCard
+            title="Lucro sobre Carcaça"
+            value={formatCurrency(
+              pedidosCliente.reduce((sum: number, pedido: any) => {
+                return (
+                  sum +
+                  (pedido.order_items?.reduce((itemSum: number, item: any) => {
+                    return itemSum + (item.retained_revenue_carcass || 0);
+                  }, 0) || 0)
+                );
+              }, 0)
+            )}
+            icon={DollarSign}
+            description="Total gerado nas negociações"
+          />
         </div>
 
         <Card>
           <CardHeader>
             <CardTitle>Carcaças Pendentes</CardTitle>
-            <CardDescription>Pedidos aguardando devolução de carcaça</CardDescription>
+            <CardDescription>
+              Pedidos aguardando devolução de carcaça
+            </CardDescription>
           </CardHeader>
           <CardContent>
-                  <Table>
-                    <TableHeader>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Pedido</TableHead>
+                  <TableHead>Produto</TableHead>
+                  <TableHead className="text-right">Débito</TableHead>
+                  <TableHead className="text-center">Dias Pendente</TableHead>
+                  <TableHead>Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(() => {
+                  // Coletar todos os itens pendentes de todos os pedidos
+                  const itensPendentes: Array<{
+                    pedido: any;
+                    item: any;
+                  }> = [];
+
+                  pedidosPendentes.forEach((pedido) => {
+                    pedido.order_items?.forEach((item: any) => {
+                      // Incluir apenas itens com débito de carcaça pendente
+                      if (item.debito_carcaca > 0) {
+                        itensPendentes.push({ pedido, item });
+                      }
+                    });
+                  });
+
+                  if (itensPendentes.length === 0) {
+                    return (
                       <TableRow>
-                        <TableHead>Pedido</TableHead>
-                        <TableHead>Produto</TableHead>
-                        <TableHead className="text-right">Débito</TableHead>
-                        <TableHead className="text-center">Dias Pendente</TableHead>
-                        <TableHead>Status</TableHead>
+                        <TableCell
+                          colSpan={5}
+                          className="text-center text-muted-foreground"
+                        >
+                          Nenhuma carcaça pendente
+                        </TableCell>
                       </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {pedidosPendentes.length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={5} className="text-center text-muted-foreground">
-                            Nenhuma carcaça pendente
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        pedidosPendentes.map((pedido) => {
-                          const primeiroItem = pedido.order_items?.[0]
-                          return (
-                            <TableRow key={pedido.id}>
-                              <TableCell className="font-mono text-sm">
-                                <Link href={`/pedidos/${pedido.numero_pedido}`} className="hover:underline">
-                                  {pedido.numero_pedido}
-                                </Link>
-                              </TableCell>
-                              <TableCell>{primeiroItem?.produto_nome || "-"}</TableCell>
-                              <TableCell className="text-right">{formatCurrency(pedido.debito_carcaca || 0)}</TableCell>
-                              <TableCell className="text-center">{getDaysPending(pedido.data_venda)} dias</TableCell>
-                              <TableCell>
-                                <StatusBadge status={mapStatusToBadge(pedido.status)} />
-                              </TableCell>
-                            </TableRow>
-                          )
-                        })
-                      )}
-                    </TableBody>
-                  </Table>
+                    );
+                  }
+
+                  return itensPendentes.map(({ pedido, item }, index) => (
+                    <TableRow key={`${pedido.id}-${item.id}-${index}`}>
+                      <TableCell className="font-mono text-sm">
+                        <Link
+                          href={`/pedidos/${pedido.numero_pedido}`}
+                          className="hover:underline"
+                        >
+                          {pedido.numero_pedido}
+                        </Link>
+                      </TableCell>
+                      <TableCell>{item.produto_nome || "-"}</TableCell>
+                      <TableCell className="text-right">
+                        {item.debito_carcaca}{" "}
+                        {item.debito_carcaca === 1 ? "Carcaça" : "Carcaças"}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {getDaysPending(pedido.data_venda)} dias
+                      </TableCell>
+                      <TableCell>
+                        <StatusBadge status={mapStatusToBadge(pedido.status)} />
+                      </TableCell>
+                    </TableRow>
+                  ));
+                })()}
+              </TableBody>
+            </Table>
           </CardContent>
         </Card>
 
@@ -201,50 +266,66 @@ export default function ClienteDetalhePage() {
             <CardDescription>Todos os pedidos do cliente</CardDescription>
           </CardHeader>
           <CardContent>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Pedido</TableHead>
-                        <TableHead>Produto</TableHead>
-                        <TableHead>Tipo</TableHead>
-                        <TableHead className="text-right">Valor</TableHead>
-                        <TableHead>Data</TableHead>
-                        <TableHead>Status</TableHead>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Pedido</TableHead>
+                  <TableHead>Produto</TableHead>
+                  <TableHead>Tipo</TableHead>
+                  <TableHead className="text-right">Valor</TableHead>
+                  <TableHead>Data</TableHead>
+                  <TableHead>Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {pedidosCliente.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={6}
+                      className="text-center text-muted-foreground"
+                    >
+                      Nenhum pedido encontrado
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  pedidosCliente.map((pedido) => {
+                    const primeiroItem = pedido.order_items?.[0];
+                    return (
+                      <TableRow key={pedido.id}>
+                        <TableCell className="font-mono text-sm">
+                          <Link
+                            href={`/pedidos/${pedido.numero_pedido}`}
+                            className="hover:underline"
+                          >
+                            {pedido.numero_pedido}
+                          </Link>
+                        </TableCell>
+                        <TableCell>
+                          {primeiroItem?.produto_nome || "-"}
+                        </TableCell>
+                        <TableCell>
+                          {pedido.tipo_venda === "Base de Troca"
+                            ? "Base de Troca"
+                            : "Normal"}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {formatCurrency(pedido.valor_total || 0)}
+                        </TableCell>
+                        <TableCell>{formatDate(pedido.data_venda)}</TableCell>
+                        <TableCell>
+                          <StatusBadge
+                            status={mapStatusToBadge(pedido.status)}
+                          />
+                        </TableCell>
                       </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {pedidosCliente.length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={6} className="text-center text-muted-foreground">
-                            Nenhum pedido encontrado
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        pedidosCliente.map((pedido) => {
-                          const primeiroItem = pedido.order_items?.[0]
-                          return (
-                            <TableRow key={pedido.id}>
-                              <TableCell className="font-mono text-sm">
-                                <Link href={`/pedidos/${pedido.numero_pedido}`} className="hover:underline">
-                                  {pedido.numero_pedido}
-                                </Link>
-                              </TableCell>
-                              <TableCell>{primeiroItem?.produto_nome || "-"}</TableCell>
-                              <TableCell>{pedido.tipo_venda === "Base de Troca" ? "Base de Troca" : "Normal"}</TableCell>
-                              <TableCell className="text-right">{formatCurrency(pedido.valor_total || 0)}</TableCell>
-                              <TableCell>{formatDate(pedido.data_venda)}</TableCell>
-                              <TableCell>
-                                <StatusBadge status={mapStatusToBadge(pedido.status)} />
-                              </TableCell>
-                            </TableRow>
-                          )
-                        })
-                      )}
-                    </TableBody>
-                  </Table>
+                    );
+                  })
+                )}
+              </TableBody>
+            </Table>
           </CardContent>
         </Card>
       </div>
     </ProtectedRoute>
-  )
+  );
 }

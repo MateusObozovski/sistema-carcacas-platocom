@@ -89,6 +89,7 @@ export default function ProdutosPage() {
     categoria: "kit",
     preco_base: "",
     desconto_maximo_bt: "",
+    carcass_value: "",
     observacoes: "",
     ativo: true,
   });
@@ -206,13 +207,10 @@ export default function ProdutosPage() {
       return;
     }
 
-    if (
-      !formData.desconto_maximo_bt ||
-      Number(formData.desconto_maximo_bt) < 0
-    ) {
+    if (!formData.carcass_value || Number(formData.carcass_value) < 0) {
       toast({
         title: "Erro",
-        description: "O desconto máximo deve ser maior ou igual a zero",
+        description: "O valor da carcaça deve ser maior ou igual a zero",
         variant: "destructive",
       });
       return;
@@ -228,7 +226,8 @@ export default function ProdutosPage() {
           tipo: formData.tipo,
           categoria: formData.categoria,
           preco_base: Number(formData.preco_base),
-          desconto_maximo_bt: Number(formData.desconto_maximo_bt),
+          desconto_maximo_bt: editingProduct.desconto_maximo_bt || 0, // Mantém o valor existente para compatibilidade
+          carcass_value: Number(formData.carcass_value) || 0,
           observacoes: formData.observacoes.trim() || undefined,
           ativo: formData.ativo,
         });
@@ -247,7 +246,8 @@ export default function ProdutosPage() {
           tipo: formData.tipo,
           categoria: formData.categoria,
           preco_base: Number(formData.preco_base),
-          desconto_maximo_bt: Number(formData.desconto_maximo_bt),
+          desconto_maximo_bt: 0, // Não é mais necessário, calculado pelo valor da carcaça
+          carcass_value: Number(formData.carcass_value) || 0,
           observacoes: formData.observacoes.trim() || undefined,
           ativo: formData.ativo,
         });
@@ -268,6 +268,7 @@ export default function ProdutosPage() {
         categoria: "kit",
         preco_base: "",
         desconto_maximo_bt: "",
+        carcass_value: "",
         observacoes: "",
         ativo: true,
       });
@@ -294,6 +295,7 @@ export default function ProdutosPage() {
       categoria: product.categoria,
       preco_base: product.preco_base.toString(),
       desconto_maximo_bt: product.desconto_maximo_bt.toString(),
+      carcass_value: (product.carcass_value || 0).toString(),
       observacoes: product.observacoes || "",
       ativo: product.ativo,
     });
@@ -429,6 +431,7 @@ export default function ProdutosPage() {
                 categoria: "kit",
                 preco_base: "",
                 desconto_maximo_bt: "",
+                carcass_value: "",
                 observacoes: "",
                 ativo: true,
               });
@@ -565,23 +568,26 @@ export default function ProdutosPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="desconto_maximo_bt">
-                    Desconto Máximo (%) *
-                  </Label>
+                  <Label htmlFor="carcass_value">Valor da Carcaça (R$) *</Label>
                   <Input
-                    id="desconto_maximo_bt"
+                    id="carcass_value"
                     type="number"
+                    step="0.01"
                     min="0"
-                    max="100"
-                    value={formData.desconto_maximo_bt}
+                    value={formData.carcass_value}
                     onChange={(e) =>
                       setFormData({
                         ...formData,
-                        desconto_maximo_bt: e.target.value,
+                        carcass_value: e.target.value,
                       })
                     }
                     required
+                    placeholder="Ex: 100.00"
                   />
+                  <p className="text-xs text-muted-foreground">
+                    Valor fixo em reais que representa o desconto máximo
+                    permitido
+                  </p>
                 </div>
               </div>
 
@@ -628,6 +634,7 @@ export default function ProdutosPage() {
                       categoria: "kit",
                       preco_base: "",
                       desconto_maximo_bt: "",
+                      carcass_value: "",
                       observacoes: "",
                       ativo: true,
                     });
@@ -801,10 +808,17 @@ export default function ProdutosPage() {
                         </div>
                         <div>
                           <span className="text-muted-foreground">
-                            Desc. Máx:
+                            Valor Carcaça:
                           </span>
                           <p className="font-medium text-foreground">
-                            {product.desconto_maximo_bt}%
+                            R${" "}
+                            {(product.carcass_value || 0).toLocaleString(
+                              "pt-BR",
+                              {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              }
+                            )}
                           </p>
                         </div>
                       </div>
@@ -879,7 +893,7 @@ export default function ProdutosPage() {
                       Preço
                     </TableHead>
                     <TableHead className="w-[90px] px-3 py-4 text-sm font-medium">
-                      Desc. Máx.
+                      Valor Carcaça
                     </TableHead>
                     <TableHead className="w-[85px] px-3 py-4 text-sm font-medium">
                       Status
@@ -924,7 +938,11 @@ export default function ProdutosPage() {
                         })}
                       </TableCell>
                       <TableCell className="px-3 py-4 text-sm">
-                        {product.desconto_maximo_bt}%
+                        R${" "}
+                        {(product.carcass_value || 0).toLocaleString("pt-BR", {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
                       </TableCell>
                       <TableCell className="px-3 py-4">
                         <Badge

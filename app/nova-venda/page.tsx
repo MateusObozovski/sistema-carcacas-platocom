@@ -36,6 +36,17 @@ import { ProductSelectorModal } from "@/components/product-selector-modal";
 import type { OrderItem } from "@/lib/types";
 import { Plus, Trash2, Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  calculateMaxDiscountPercent,
+  calculateDiscountValue,
+  calculateRetainedRevenue,
+  validateDiscount,
+} from "@/lib/pricing-calculations";
+import {
+  formatCurrencyInput,
+  parseCurrencyInput,
+  maskCurrencyInput,
+} from "@/lib/masks";
 
 export default function NovaVendaPage() {
   const { user } = useAuth();
@@ -59,6 +70,11 @@ export default function NovaVendaPage() {
   const [highlightedItemId, setHighlightedItemId] = useState<string | null>(
     null
   );
+
+  // Estado para valores formatados dos preços de venda (enquanto o usuário digita)
+  const [precoVendaFormatado, setPrecoVendaFormatado] = useState<
+    Record<string, string>
+  >({});
 
   const [produtos, setProdutos] = useState<DatabaseProduct[]>([]);
   const [clientes, setClientes] = useState<any[]>([]);
@@ -117,7 +133,7 @@ export default function NovaVendaPage() {
   const totalOriginal = useMemo(
     () =>
       items.reduce(
-        (sum, item) => sum + item.precoOriginal * item.quantidade,
+        (sum, item) => sum + item.precoUnitario * item.quantidade, // Preço de venda negociado
         0
       ),
     [items]
@@ -125,11 +141,13 @@ export default function NovaVendaPage() {
 
   const totalDesconto = useMemo(
     () =>
-      items.reduce(
-        (sum, item) =>
-          sum + (item.precoOriginal - item.precoUnitario) * item.quantidade,
-        0
-      ),
+      items.reduce((sum, item) => {
+        const valorDesconto = calculateDiscountValue(
+          item.precoUnitario,
+          item.desconto
+        );
+        return sum + valorDesconto * item.quantidade;
+      }, 0),
     [items]
   );
 
@@ -159,28 +177,57 @@ export default function NovaVendaPage() {
       return;
     }
 
-    // Calcular preços
+    // Calcular preços com nova lógica de carcaça
     const precoOriginal = produto.preco_base;
-    const desconto = Math.min(produto.desconto_maximo_bt, 15);
-    const valorDesconto = (precoOriginal * desconto) / 100;
-    const precoUnitario = precoOriginal - valorDesconto;
+    const precoVenda = precoOriginal; // Inicialmente igual ao preço base, mas pode ser editado
+    const carcassValue = produto.carcass_value || 0;
+
+    // Calcular desconto máximo permitido baseado no preço de venda e valor da carcaça
+    const maxDiscountPercent = calculateMaxDiscountPercent(
+      precoVenda,
+      carcassValue
+    );
+
+    // Inicializar com desconto mínimo entre o máximo permitido e o desconto_maximo_bt antigo (para compatibilidade)
+    const descontoInicial = Math.min(
+      maxDiscountPercent,
+      produto.desconto_maximo_bt || 15
+    );
+    const valorDesconto = calculateDiscountValue(precoVenda, descontoInicial);
+    const precoFinalUnitario = precoVenda - valorDesconto; // Preço após desconto
     const quantidade = 1;
-    const subtotal = precoUnitario * quantidade;
+    const subtotal = precoFinalUnitario * quantidade;
     const debitoCarcaca = quantidade;
+    const retainedRevenue = calculateRetainedRevenue(
+      carcassValue,
+      valorDesconto
+    );
 
     const newItem: OrderItem = {
       id: `item-${Date.now()}`,
       produtoId: produto.id,
       produtoNome: produto.nome,
+      produtoCodigo: produto.codigo,
+      produtoCodigoFabricante: produto.codigo_fabricante,
       quantidade,
-      precoUnitario,
+      precoUnitario: precoVenda, // Preço de venda negociado (antes do desconto)
       precoOriginal,
-      desconto,
+      desconto: descontoInicial,
+      carcassValue,
+      maxDiscountPercent,
+      retainedRevenue,
       subtotal,
       debitoCarcaca,
     };
 
     setItems([...items, newItem]);
+
+    // Inicializar o valor formatado do preço de venda
+    setPrecoVendaFormatado((prev) => ({
+      ...prev,
+      [newItem.id]: formatCurrencyInput(precoVenda),
+    }));
+
     toast({
       title: "Item adicionado",
       description: `${produto.nome} adicionado ao pedido`,
@@ -189,6 +236,12 @@ export default function NovaVendaPage() {
 
   const handleRemoveItem = (itemId: string) => {
     setItems(items.filter((item) => item.id !== itemId));
+    // Remover também o valor formatado
+    setPrecoVendaFormatado((prev) => {
+      const newState = { ...prev };
+      delete newState[itemId];
+      return newState;
+    });
   };
 
   const atualizarQuantidade = (itemId: string, novaQuantidade: number) => {
@@ -196,7 +249,13 @@ export default function NovaVendaPage() {
     setItems(
       items.map((item) => {
         if (item.id === itemId) {
-          const subtotal = item.precoUnitario * novaQuantidade;
+          // Calcular subtotal: (preço de venda - desconto) * quantidade
+          const valorDesconto = calculateDiscountValue(
+            item.precoUnitario,
+            item.desconto
+          );
+          const precoFinalUnitario = item.precoUnitario - valorDesconto;
+          const subtotal = precoFinalUnitario * novaQuantidade;
           const debitoCarcaca = novaQuantidade;
           return {
             ...item,
@@ -210,23 +269,115 @@ export default function NovaVendaPage() {
     );
   };
 
-  const atualizarDesconto = (itemId: string, novoDesconto: number) => {
+  const atualizarPrecoVenda = (itemId: string, valorFormatado: string) => {
     const item = items.find((i) => i.id === itemId);
     if (!item) return;
 
-    // Validar desconto máximo do produto
-    const produto = produtos.find((p) => p.id === item.produtoId);
-    const descontoMaximo = produto?.desconto_maximo_bt || 15;
-    const descontoFinal = Math.min(Math.max(novoDesconto, 0), descontoMaximo);
+    // Atualizar o valor formatado no estado
+    setPrecoVendaFormatado((prev) => ({
+      ...prev,
+      [itemId]: valorFormatado,
+    }));
 
-    const valorDesconto = (item.precoOriginal * descontoFinal) / 100;
-    const precoUnitario = item.precoOriginal - valorDesconto;
-    const subtotal = precoUnitario * item.quantidade;
+    // Converter o valor formatado para número
+    const novoPrecoVenda = parseCurrencyInput(valorFormatado);
+
+    // Se o valor for inválido ou zero, apenas atualizar a formatação sem recalcular
+    if (isNaN(novoPrecoVenda) || novoPrecoVenda <= 0) {
+      return;
+    }
+
+    // Recalcular desconto máximo baseado no novo preço de venda
+    const maxDiscountPercent = calculateMaxDiscountPercent(
+      novoPrecoVenda,
+      item.carcassValue
+    );
+
+    // Se o desconto atual exceder o novo máximo, ajustar automaticamente
+    let descontoFinal = item.desconto;
+    if (descontoFinal > maxDiscountPercent) {
+      descontoFinal = maxDiscountPercent;
+      toast({
+        title: "Desconto ajustado",
+        description: `O desconto foi ajustado para ${maxDiscountPercent.toFixed(
+          2
+        )}% (máximo permitido para este preço)`,
+        variant: "default",
+      });
+    }
+
+    // Recalcular valores
+    const valorDesconto = calculateDiscountValue(novoPrecoVenda, descontoFinal);
+    const precoFinalUnitario = novoPrecoVenda - valorDesconto;
+    const subtotal = precoFinalUnitario * item.quantidade;
+    const retainedRevenue = calculateRetainedRevenue(
+      item.carcassValue,
+      valorDesconto
+    );
 
     setItems(
       items.map((i) =>
         i.id === itemId
-          ? { ...i, desconto: descontoFinal, precoUnitario, subtotal }
+          ? {
+              ...i,
+              precoUnitario: novoPrecoVenda, // Preço de venda negociado (antes do desconto)
+              desconto: descontoFinal,
+              maxDiscountPercent,
+              retainedRevenue,
+              subtotal,
+            }
+          : i
+      )
+    );
+  };
+
+  const atualizarDesconto = (itemId: string, novoDesconto: number) => {
+    const item = items.find((i) => i.id === itemId);
+    if (!item) return;
+
+    // Validar desconto contra valor da carcaça
+    const precoVenda = item.precoUnitario;
+    const descontoValue = calculateDiscountValue(precoVenda, novoDesconto);
+
+    // Se o desconto exceder o valor da carcaça, bloquear e mostrar alerta
+    if (descontoValue > item.carcassValue) {
+      const maxDiscountAllowed = calculateMaxDiscountPercent(
+        precoVenda,
+        item.carcassValue
+      );
+      toast({
+        title: "Desconto inválido",
+        description: `O desconto máximo permitido é ${maxDiscountAllowed.toFixed(
+          2
+        )}% (R$ ${item.carcassValue.toFixed(2)})`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Recalcular valores
+    const precoFinalUnitario = precoVenda - descontoValue; // Preço após desconto
+    const subtotal = precoFinalUnitario * item.quantidade;
+    const retainedRevenue = calculateRetainedRevenue(
+      item.carcassValue,
+      descontoValue
+    );
+    const maxDiscountPercent = calculateMaxDiscountPercent(
+      precoVenda,
+      item.carcassValue
+    );
+
+    setItems(
+      items.map((i) =>
+        i.id === itemId
+          ? {
+              ...i,
+              desconto: Math.max(0, Math.min(novoDesconto, maxDiscountPercent)),
+              maxDiscountPercent,
+              retainedRevenue,
+              subtotal,
+              // precoUnitario permanece como preço de venda (antes do desconto)
+            }
           : i
       )
     );
@@ -264,17 +415,21 @@ export default function NovaVendaPage() {
     const cliente = clientes.find((c) => c.id === clienteId);
     const vendedorResponsavel = cliente?.vendedor_id;
 
-    if (!clienteId || items.length === 0 || !vendedorResponsavel || !numeroPedidoOrigemTrimmed) {
+    if (
+      !clienteId ||
+      items.length === 0 ||
+      !vendedorResponsavel ||
+      !numeroPedidoOrigemTrimmed
+    ) {
       toast({
         title: "Erro",
-        description:
-          !numeroPedidoOrigemTrimmed
-            ? "Informe o número do pedido origem"
-            : items.length === 0
-            ? "Adicione pelo menos um item"
-            : !clienteId
-            ? "Selecione um cliente"
-            : "Cliente não possui vendedor vinculado",
+        description: !numeroPedidoOrigemTrimmed
+          ? "Informe o número do pedido origem"
+          : items.length === 0
+          ? "Adicione pelo menos um item"
+          : !clienteId
+          ? "Selecione um cliente"
+          : "Cliente não possui vendedor vinculado",
         variant: "destructive",
       });
       setIsSubmitting(false);
@@ -298,16 +453,26 @@ export default function NovaVendaPage() {
         empresa: empresa && empresa !== "none" ? empresa : undefined,
       };
 
-      const orderItems = items.map((item) => ({
-        produto_id: item.produtoId,
-        produto_nome: item.produtoNome,
-        quantidade: item.quantidade,
-        preco_unitario: item.precoUnitario,
-        desconto_percentual: item.desconto,
-        preco_final: item.precoUnitario,
-        debito_carcaca: item.debitoCarcaca,
-        tipo_venda: "Base de Troca",
-      }));
+      const orderItems = items.map((item) => {
+        // Calcular preço final (preço de venda - desconto)
+        const valorDesconto = calculateDiscountValue(
+          item.precoUnitario,
+          item.desconto
+        );
+        const precoFinal = item.precoUnitario - valorDesconto;
+
+        return {
+          produto_id: item.produtoId,
+          produto_nome: item.produtoNome,
+          quantidade: item.quantidade,
+          preco_unitario: item.precoUnitario, // Preço de venda negociado (antes do desconto)
+          desconto_percentual: item.desconto,
+          preco_final: precoFinal, // Preço após desconto
+          debito_carcaca: item.debitoCarcaca,
+          retained_revenue_carcass: item.retainedRevenue, // Valor gerado na negociação
+          tipo_venda: "Base de Troca",
+        };
+      });
 
       await createOrder(order, orderItems);
 
@@ -449,7 +614,11 @@ export default function NovaVendaPage() {
                     setEmpresa(v === "none" ? "none" : (v as any))
                   }
                 >
-                  <SelectTrigger id="empresa" className="h-11 text-base">
+                  <SelectTrigger
+                    id="empresa"
+                    className="text-base w-full"
+                    style={{ height: "44px" }}
+                  >
                     <SelectValue placeholder="Selecione..." />
                   </SelectTrigger>
                   <SelectContent>
@@ -487,19 +656,31 @@ export default function NovaVendaPage() {
                 <Table>
                   <TableHeader className="sticky top-0 bg-background z-10 border-b">
                     <TableRow>
-                      <TableHead className="w-[300px] text-base font-semibold">
-                        Item/Descrição
-                      </TableHead>
                       <TableHead className="w-[100px] text-base font-semibold">
+                        Código
+                      </TableHead>
+                      <TableHead className="w-[200px] text-base font-semibold">
+                        Descrição
+                      </TableHead>
+                      <TableHead className="w-[120px] text-base font-semibold">
+                        Cod. Fabricante
+                      </TableHead>
+                      <TableHead className="w-[80px] text-base font-semibold">
                         Qtd
                       </TableHead>
-                      <TableHead className="w-[120px] text-base font-semibold">
-                        Vl. Unit.
+                      <TableHead className="w-[66px] text-base font-semibold">
+                        Preço Venda
                       </TableHead>
-                      <TableHead className="w-[100px] text-base font-semibold">
+                      <TableHead className="w-[90px] text-base font-semibold">
                         Desc %
                       </TableHead>
-                      <TableHead className="w-[120px] text-base font-semibold">
+                      <TableHead className="w-[90px] text-base font-semibold">
+                        Desc. Máx.
+                      </TableHead>
+                      <TableHead className="w-[110px] text-base font-semibold">
+                        Lucro Carcaça
+                      </TableHead>
+                      <TableHead className="w-[110px] text-base font-semibold">
                         Subtotal
                       </TableHead>
                       <TableHead className="w-[60px] text-base font-semibold">
@@ -516,8 +697,14 @@ export default function NovaVendaPage() {
                             "bg-yellow-100 dark:bg-yellow-900/20 animate-pulse"
                         )}
                       >
+                        <TableCell className="text-base">
+                          {item.produtoCodigo || "-"}
+                        </TableCell>
                         <TableCell className="font-medium text-base">
                           {item.produtoNome}
+                        </TableCell>
+                        <TableCell className="text-base">
+                          {item.produtoCodigoFabricante || "-"}
                         </TableCell>
                         <TableCell>
                           <Input
@@ -530,20 +717,42 @@ export default function NovaVendaPage() {
                                 Number(e.target.value) || 1
                               )
                             }
-                            className="w-20 h-10 text-base"
+                            className="w-16 h-10 text-base"
                           />
                         </TableCell>
-                        <TableCell className="text-base">
-                          {formatCurrency(item.precoUnitario)}
+                        <TableCell>
+                          <Input
+                            type="text"
+                            value={
+                              precoVendaFormatado[item.id] !== undefined
+                                ? precoVendaFormatado[item.id]
+                                : formatCurrencyInput(item.precoUnitario)
+                            }
+                            onChange={(e) => {
+                              const valorFormatado = maskCurrencyInput(
+                                e.target.value
+                              );
+                              atualizarPrecoVenda(item.id, valorFormatado);
+                            }}
+                            onBlur={(e) => {
+                              // Garantir formatação correta ao sair do campo
+                              const valor = parseCurrencyInput(e.target.value);
+                              if (valor > 0) {
+                                setPrecoVendaFormatado((prev) => ({
+                                  ...prev,
+                                  [item.id]: formatCurrencyInput(valor),
+                                }));
+                              }
+                            }}
+                            placeholder="0,00"
+                            className="w-24 h-10 text-base"
+                          />
                         </TableCell>
                         <TableCell>
                           <Input
                             type="number"
                             min="0"
-                            max={
-                              produtos.find((p) => p.id === item.produtoId)
-                                ?.desconto_maximo_bt || 15
-                            }
+                            max={item.maxDiscountPercent}
                             step="0.1"
                             value={item.desconto}
                             onChange={(e) =>
@@ -552,8 +761,21 @@ export default function NovaVendaPage() {
                                 Number(e.target.value) || 0
                               )
                             }
-                            className="w-20 h-10 text-base"
+                            className={cn(
+                              "w-20 h-10 text-base",
+                              !validateDiscount(
+                                item.precoUnitario,
+                                item.desconto,
+                                item.carcassValue
+                              ) && "border-red-500"
+                            )}
                           />
+                        </TableCell>
+                        <TableCell className="text-base text-muted-foreground">
+                          {item.maxDiscountPercent.toFixed(2)}%
+                        </TableCell>
+                        <TableCell className="text-base font-medium text-green-600">
+                          {formatCurrency(item.retainedRevenue)}
                         </TableCell>
                         <TableCell className="font-medium text-base">
                           {formatCurrency(item.subtotal)}

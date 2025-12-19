@@ -46,10 +46,15 @@ export interface OrderItem {
   id: string;
   produtoId: string;
   produtoNome: string;
+  produtoCodigo?: string; // Código do produto
+  produtoCodigoFabricante?: string; // Código do fabricante
   quantidade: number;
-  precoUnitario: number;
-  precoOriginal: number;
-  desconto: number;
+  precoUnitario: number; // Preço de venda negociado (pode ser editado)
+  precoOriginal: number; // Preço base do produto
+  desconto: number; // Desconto em %
+  carcassValue: number; // Valor fixo da carcaça
+  maxDiscountPercent: number; // % máximo calculado dinamicamente
+  retainedRevenue: number; // Valor gerado (carcassValue - descontoReal)
   subtotal: number;
   debitoCarcaca: number;
 }

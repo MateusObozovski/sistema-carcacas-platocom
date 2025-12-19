@@ -301,15 +301,11 @@ export default function PedidoDetalhePage() {
                 <p className="text-sm text-muted-foreground">Produtos</p>
                 <div className="space-y-1">
                   {pedido.order_items?.map((item: any) => (
-                    <p key={item.id} className="font-medium">
+                    <p key={item.id} className="text-xs font-medium truncate">
                       {item.produto_nome} x{item.quantidade}
                     </p>
                   ))}
                 </div>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Tipo de Venda</p>
-                <p className="font-medium">{pedido.tipo_venda}</p>
               </div>
             </CardContent>
           </Card>
@@ -322,13 +318,11 @@ export default function PedidoDetalhePage() {
           <CardContent>
             <div className="space-y-3">
               {pedido.order_items?.map((item: any, index: number) => {
-                // Calcular preço original (antes do desconto)
-                const precoOriginal =
-                  item.desconto_percentual > 0
-                    ? item.preco_unitario / (1 - item.desconto_percentual / 100)
-                    : item.preco_unitario;
+                // preco_unitario é o preço de venda negociado (antes do desconto)
+                const precoVenda = item.preco_unitario;
                 const valorDescontoPorItem =
-                  (precoOriginal - item.preco_unitario) * item.quantidade;
+                  ((precoVenda * item.desconto_percentual) / 100) *
+                  item.quantidade;
                 const subtotalItem = item.preco_final * item.quantidade;
 
                 return (
@@ -346,7 +340,7 @@ export default function PedidoDetalhePage() {
                         Preço Unitário
                       </span>
                       <span className="font-medium">
-                        {formatCurrency(precoOriginal)}
+                        {formatCurrency(precoVenda)}
                       </span>
                     </div>
                     {item.desconto_percentual > 0 && (
@@ -370,26 +364,23 @@ export default function PedidoDetalhePage() {
               })}
               {(() => {
                 // Calcular totais gerais
+                // preco_unitario é o preço de venda negociado (antes do desconto)
                 const subtotalGeral =
                   pedido.order_items?.reduce((sum: number, item: any) => {
-                    const precoOriginal =
-                      item.desconto_percentual > 0
-                        ? item.preco_unitario /
-                          (1 - item.desconto_percentual / 100)
-                        : item.preco_unitario;
-                    return sum + precoOriginal * item.quantidade;
+                    return sum + item.preco_unitario * item.quantidade;
                   }, 0) || 0;
 
                 const totalDescontos =
                   pedido.order_items?.reduce((sum: number, item: any) => {
-                    const precoOriginal =
-                      item.desconto_percentual > 0
-                        ? item.preco_unitario /
-                          (1 - item.desconto_percentual / 100)
-                        : item.preco_unitario;
                     const valorDesconto =
-                      (precoOriginal - item.preco_unitario) * item.quantidade;
+                      ((item.preco_unitario * item.desconto_percentual) / 100) *
+                      item.quantidade;
                     return sum + valorDesconto;
+                  }, 0) || 0;
+
+                const totalRetainedRevenue =
+                  pedido.order_items?.reduce((sum: number, item: any) => {
+                    return sum + (item.retained_revenue_carcass || 0);
                   }, 0) || 0;
 
                 return (
@@ -416,6 +407,16 @@ export default function PedidoDetalhePage() {
                         {formatCurrency(pedido.valor_total || 0)}
                       </span>
                     </div>
+                    {totalRetainedRevenue > 0 && (
+                      <div className="flex justify-between border-t border-border pt-2 mt-2">
+                        <span className="text-sm text-muted-foreground">
+                          Lucro sobre Carcaça
+                        </span>
+                        <span className="text-sm font-semibold text-green-600">
+                          {formatCurrency(totalRetainedRevenue)}
+                        </span>
+                      </div>
+                    )}
                   </>
                 );
               })()}
@@ -428,44 +429,136 @@ export default function PedidoDetalhePage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Package className="h-5 w-5" />
-                Carcaça
+                Carcaças
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-3">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">
-                    Débito de Carcaça
-                  </span>
-                  <span className="font-medium text-yellow-500">
-                    {pedido.debito_carcaca || 0} carcaça(s)
-                  </span>
+              <div className="space-y-4">
+                {/* Resumo Geral */}
+                <div className="space-y-2 border-b pb-3">
+                  {(() => {
+                    const totalCarcacas =
+                      pedido.order_items?.reduce(
+                        (sum: number, item: any) =>
+                          sum + (item.quantidade || 0),
+                        0
+                      ) || 0;
+                    const carcacasPendentes =
+                      pedido.order_items?.reduce(
+                        (sum: number, item: any) =>
+                          sum + (item.debito_carcaca || 0),
+                        0
+                      ) || 0;
+                    const carcacasDevolvidas =
+                      totalCarcacas - carcacasPendentes;
+
+                    return (
+                      <>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">
+                            Total de Carcaças
+                          </span>
+                          <span className="font-medium">
+                            {totalCarcacas} carcaça(s)
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">
+                            Carcaças Devolvidas
+                          </span>
+                          <span className="font-medium text-green-600">
+                            {carcacasDevolvidas} carcaça(s)
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">
+                            Carcaças Pendentes
+                          </span>
+                          <span className="font-medium text-yellow-500">
+                            {carcacasPendentes} carcaça(s)
+                          </span>
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Status</span>
-                  <StatusBadge status={mapStatusToBadge(pedido.status)} />
+
+                {/* Detalhamento por Item */}
+                <div className="space-y-2">
+                  <h4 className="text-sm font-semibold">
+                    Detalhamento por Item
+                  </h4>
+                  <div className="space-y-2">
+                    {pedido.order_items?.map((item: any) => {
+                      const carcacasPendentesItem = item.debito_carcaca || 0;
+                      const carcacasDevolvidasItem =
+                        item.quantidade - carcacasPendentesItem;
+
+                      return (
+                        <div
+                          key={item.id}
+                          className="flex items-center justify-between p-2 bg-muted/50 rounded-md"
+                        >
+                          <div className="flex-1">
+                            <p className="text-sm font-medium">
+                              {item.produto_nome}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              Quantidade: {item.quantidade}
+                            </p>
+                          </div>
+                          <div className="flex gap-4 text-sm">
+                            <div className="text-center">
+                              <p className="text-xs text-muted-foreground">
+                                Devolvidas
+                              </p>
+                              <p className="font-medium text-green-600">
+                                {carcacasDevolvidasItem}
+                              </p>
+                            </div>
+                            <div className="text-center">
+                              <p className="text-xs text-muted-foreground">
+                                Pendentes
+                              </p>
+                              <p className="font-medium text-yellow-500">
+                                {carcacasPendentesItem}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-                {(pedido.status === "Aguardando Devolução" ||
-                  pedido.status === "Atrasado") && (
-                  <>
+
+                {/* Status e outras informações */}
+                <div className="space-y-3 border-t pt-3">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Status</span>
+                    <StatusBadge status={mapStatusToBadge(pedido.status)} />
+                  </div>
+                  {(pedido.status === "Aguardando Devolução" ||
+                    pedido.status === "Atrasado") && (
+                    <>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">
+                          Dias Pendente
+                        </span>
+                        <span className="font-medium">{diasPendente} dias</span>
+                      </div>
+                    </>
+                  )}
+                  {pedido.status === "Concluído" && pedido.data_devolucao && (
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">
-                        Dias Pendente
+                        Data de Devolução
                       </span>
-                      <span className="font-medium">{diasPendente} dias</span>
+                      <span className="font-medium">
+                        {formatDate(pedido.data_devolucao)}
+                      </span>
                     </div>
-                  </>
-                )}
-                {pedido.status === "Concluído" && pedido.data_devolucao && (
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">
-                      Data de Devolução
-                    </span>
-                    <span className="font-medium">
-                      {formatDate(pedido.data_devolucao)}
-                    </span>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             </CardContent>
           </Card>

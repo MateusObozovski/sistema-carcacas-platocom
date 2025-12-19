@@ -1,87 +1,113 @@
-"use client"
+"use client";
 
-import { useState, useEffect } from "react"
-import { useParams } from "next/navigation"
-import { ProtectedRoute } from "@/components/protected-route"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { StatusBadge } from "@/components/status-badge"
-import { getVendedorById, getClients, getOrders, type DatabaseVendedor } from "@/lib/supabase/database"
-import Link from "next/link"
-import { ArrowLeft, DollarSign, Package, Users, ShoppingCart } from "lucide-react"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { StatCard } from "@/components/stat-card"
+import { useState, useEffect } from "react";
+import { useParams } from "next/navigation";
+import { ProtectedRoute } from "@/components/protected-route";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { StatusBadge } from "@/components/status-badge";
+import {
+  getVendedorById,
+  getClients,
+  getOrders,
+  type DatabaseVendedor,
+} from "@/lib/supabase/database";
+import Link from "next/link";
+import {
+  ArrowLeft,
+  DollarSign,
+  Package,
+  Users,
+  ShoppingCart,
+} from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { StatCard } from "@/components/stat-card";
 
 // Helper function to map database status to StatusBadge status
-function mapStatusToBadge(status: string): "aguardando" | "atrasado" | "devolvida" | "perda-total" {
-  if (status === "Aguardando Devolução") return "aguardando"
-  if (status === "Atrasado") return "atrasado"
-  if (status === "Concluído") return "devolvida"
-  if (status === "Perda Total") return "perda-total"
-  return "aguardando"
+function mapStatusToBadge(
+  status: string
+): "aguardando" | "atrasado" | "devolvida" | "perda-total" {
+  if (status === "Aguardando Devolução") return "aguardando";
+  if (status === "Atrasado") return "atrasado";
+  if (status === "Concluído") return "devolvida";
+  if (status === "Perda Total") return "perda-total";
+  return "aguardando";
 }
 
 export default function VendedorDetalhePage() {
-  const params = useParams()
-  const [vendedor, setVendedor] = useState<DatabaseVendedor | null>(null)
-  const [clientesVendedor, setClientesVendedor] = useState<any[]>([])
-  const [pedidosVendedor, setPedidosVendedor] = useState<any[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const params = useParams();
+  const [vendedor, setVendedor] = useState<DatabaseVendedor | null>(null);
+  const [clientesVendedor, setClientesVendedor] = useState<any[]>([]);
+  const [pedidosVendedor, setPedidosVendedor] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const loadData = async () => {
-      if (!params.id || typeof params.id !== "string") return
+      if (!params.id || typeof params.id !== "string") return;
 
       try {
-        setIsLoading(true)
+        setIsLoading(true);
         const [vendedorData, clientesData, pedidosData] = await Promise.all([
           getVendedorById(params.id),
           getClients(params.id),
           getOrders(params.id),
-        ])
+        ]);
 
-        setVendedor(vendedorData)
-        setClientesVendedor(clientesData)
-        setPedidosVendedor(pedidosData)
+        setVendedor(vendedorData);
+        setClientesVendedor(clientesData);
+        setPedidosVendedor(pedidosData);
       } catch (error) {
-        console.error("[v0] Error loading vendedor details:", error)
+        console.error("[v0] Error loading vendedor details:", error);
       } finally {
-        setIsLoading(false)
+        setIsLoading(false);
       }
-    }
+    };
 
-    loadData()
-  }, [params.id])
+    loadData();
+  }, [params.id]);
 
   const pedidosPendentes = pedidosVendedor.filter(
-    (p) => p.status === "Aguardando Devolução" || p.status === "Atrasado",
-  )
+    (p) => p.status === "Aguardando Devolução" || p.status === "Atrasado"
+  );
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat("pt-BR", {
       style: "currency",
       currency: "BRL",
-    }).format(value)
-  }
+    }).format(value);
+  };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("pt-BR")
-  }
+    return new Date(dateString).toLocaleDateString("pt-BR");
+  };
 
   const getDaysPending = (dataCriacao: string) => {
-    const created = new Date(dataCriacao)
-    const now = new Date()
-    const diff = now.getTime() - created.getTime()
-    return Math.floor(diff / (1000 * 60 * 60 * 24))
-  }
+    const created = new Date(dataCriacao);
+    const now = new Date();
+    const diff = now.getTime() - created.getTime();
+    return Math.floor(diff / (1000 * 60 * 60 * 24));
+  };
 
   if (isLoading) {
     return (
       <ProtectedRoute allowedRoles={["admin", "Gerente", "Coordenador"]}>
         <div className="text-center text-muted-foreground">Carregando...</div>
       </ProtectedRoute>
-    )
+    );
   }
 
   if (!vendedor) {
@@ -94,7 +120,7 @@ export default function VendedorDetalhePage() {
           </Button>
         </div>
       </ProtectedRoute>
-    )
+    );
   }
 
   return (
@@ -107,14 +133,16 @@ export default function VendedorDetalhePage() {
             </Link>
           </Button>
           <div>
-            <h2 className="text-3xl font-bold tracking-tight">{vendedor.nome}</h2>
+            <h2 className="text-3xl font-bold tracking-tight">
+              {vendedor.nome}
+            </h2>
             <p className="text-muted-foreground">
               {vendedor.email} · Detalhes e histórico do vendedor
             </p>
           </div>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
           <StatCard
             title="Débito Total"
             value={formatCurrency(vendedor.debitoTotal)}
@@ -139,6 +167,21 @@ export default function VendedorDetalhePage() {
             icon={ShoppingCart}
             description="Pedidos realizados"
           />
+          <StatCard
+            title="Lucro sobre Carcaça"
+            value={formatCurrency(
+              pedidosVendedor.reduce((sum: number, pedido: any) => {
+                return (
+                  sum +
+                  (pedido.order_items?.reduce((itemSum: number, item: any) => {
+                    return itemSum + (item.retained_revenue_carcass || 0);
+                  }, 0) || 0)
+                );
+              }, 0)
+            )}
+            icon={DollarSign}
+            description="Total gerado nas negociações"
+          />
         </div>
 
         <Tabs defaultValue="clientes" className="space-y-4">
@@ -152,7 +195,9 @@ export default function VendedorDetalhePage() {
             <Card>
               <CardHeader>
                 <CardTitle>Clientes do Vendedor</CardTitle>
-                <CardDescription>Lista de clientes e seus débitos</CardDescription>
+                <CardDescription>
+                  Lista de clientes e seus débitos
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <Table>
@@ -160,66 +205,107 @@ export default function VendedorDetalhePage() {
                     <TableRow>
                       <TableHead>Cliente</TableHead>
                       <TableHead className="text-right">Débito Total</TableHead>
-                      <TableHead className="text-right">Carcaças Pendentes</TableHead>
+                      <TableHead className="text-right">
+                        Carcaças Pendentes
+                      </TableHead>
                       <TableHead>Última Atualização</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {clientesVendedor.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={4} className="text-center text-muted-foreground">
+                        <TableCell
+                          colSpan={4}
+                          className="text-center text-muted-foreground"
+                        >
                           Nenhum cliente encontrado
                         </TableCell>
                       </TableRow>
                     ) : (
                       clientesVendedor.map((cliente) => {
                         // Calculate stats for each client from order_items
-                        const clientePedidos = pedidosVendedor.filter((p) => p.cliente_id === cliente.id)
+                        const clientePedidos = pedidosVendedor.filter(
+                          (p) => p.cliente_id === cliente.id
+                        );
                         const pedidosPendentes = clientePedidos.filter(
-                          (p) => p.status === "Aguardando Devolução" || p.status === "Atrasado",
-                        )
-                        
+                          (p) =>
+                            p.status === "Aguardando Devolução" ||
+                            p.status === "Atrasado"
+                        );
+
                         // Calcular Débito Total: soma dos valores de desconto dos order_items pendentes
-                        const clienteDebito = pedidosPendentes.reduce((sum, pedido) => {
-                          if (!pedido.order_items) return sum
-                          return sum + pedido.order_items.reduce((itemSum, item) => {
-                            if ((item.debito_carcaca || 0) <= 0) return itemSum
-                            const descontoPercentual = item.desconto_percentual || 0
-                            const precoUnitario = item.preco_unitario || 0
-                            const quantidade = item.quantidade || 0
-                            
-                            if (descontoPercentual > 0 && descontoPercentual < 100) {
-                              const precoOriginal = precoUnitario / (1 - descontoPercentual / 100)
-                              const valorDesconto = (precoOriginal - precoUnitario) * quantidade
-                              return itemSum + valorDesconto
-                            }
-                            return itemSum
-                          }, 0)
-                        }, 0)
-                        
+                        const clienteDebito = pedidosPendentes.reduce(
+                          (sum, pedido) => {
+                            if (!pedido.order_items) return sum;
+                            return (
+                              sum +
+                              pedido.order_items.reduce((itemSum, item) => {
+                                if ((item.debito_carcaca || 0) <= 0)
+                                  return itemSum;
+                                const descontoPercentual =
+                                  item.desconto_percentual || 0;
+                                const precoUnitario = item.preco_unitario || 0;
+                                const quantidade = item.quantidade || 0;
+
+                                if (
+                                  descontoPercentual > 0 &&
+                                  descontoPercentual < 100
+                                ) {
+                                  const precoOriginal =
+                                    precoUnitario /
+                                    (1 - descontoPercentual / 100);
+                                  const valorDesconto =
+                                    (precoOriginal - precoUnitario) *
+                                    quantidade;
+                                  return itemSum + valorDesconto;
+                                }
+                                return itemSum;
+                              }, 0)
+                            );
+                          },
+                          0
+                        );
+
                         // Calcular Carcaças Pendentes: soma das quantidades dos order_items pendentes
-                        const clienteCarcacas = pedidosPendentes.reduce((sum, pedido) => {
-                          if (!pedido.order_items) return sum
-                          return sum + pedido.order_items.reduce((itemSum, item) => {
-                            if ((item.debito_carcaca || 0) > 0) {
-                              return itemSum + (item.quantidade || 0)
-                            }
-                            return itemSum
-                          }, 0)
-                        }, 0)
+                        const clienteCarcacas = pedidosPendentes.reduce(
+                          (sum, pedido) => {
+                            if (!pedido.order_items) return sum;
+                            return (
+                              sum +
+                              pedido.order_items.reduce((itemSum, item) => {
+                                if ((item.debito_carcaca || 0) > 0) {
+                                  return itemSum + (item.quantidade || 0);
+                                }
+                                return itemSum;
+                              }, 0)
+                            );
+                          },
+                          0
+                        );
 
                         return (
                           <TableRow key={cliente.id}>
                             <TableCell className="font-medium">
-                              <Link href={`/clientes/${cliente.id}`} className="hover:underline">
+                              <Link
+                                href={`/clientes/${cliente.id}`}
+                                className="hover:underline"
+                              >
                                 {cliente.nome}
                               </Link>
                             </TableCell>
-                            <TableCell className="text-right">{formatCurrency(clienteDebito)}</TableCell>
-                            <TableCell className="text-right">{clienteCarcacas}</TableCell>
-                            <TableCell>{formatDate(cliente.updated_at || cliente.created_at)}</TableCell>
+                            <TableCell className="text-right">
+                              {formatCurrency(clienteDebito)}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {clienteCarcacas}
+                            </TableCell>
+                            <TableCell>
+                              {formatDate(
+                                cliente.updated_at || cliente.created_at
+                              )}
+                            </TableCell>
                           </TableRow>
-                        )
+                        );
                       })
                     )}
                   </TableBody>
@@ -232,7 +318,9 @@ export default function VendedorDetalhePage() {
             <Card>
               <CardHeader>
                 <CardTitle>Carcaças Pendentes</CardTitle>
-                <CardDescription>Pedidos aguardando devolução de carcaça</CardDescription>
+                <CardDescription>
+                  Pedidos aguardando devolução de carcaça
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <Table>
@@ -249,30 +337,46 @@ export default function VendedorDetalhePage() {
                   <TableBody>
                     {pedidosPendentes.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={6} className="text-center text-muted-foreground">
+                        <TableCell
+                          colSpan={6}
+                          className="text-center text-muted-foreground"
+                        >
                           Nenhuma carcaça pendente
                         </TableCell>
                       </TableRow>
                     ) : (
                       pedidosPendentes.map((pedido) => {
-                        const cliente = clientesVendedor.find((c) => c.id === pedido.cliente_id)
-                        const primeiroItem = pedido.order_items?.[0]
+                        const cliente = clientesVendedor.find(
+                          (c) => c.id === pedido.cliente_id
+                        );
+                        const primeiroItem = pedido.order_items?.[0];
                         return (
                           <TableRow key={pedido.id}>
                             <TableCell className="font-mono text-sm">
-                              <Link href={`/pedidos/${pedido.numero_pedido}`} className="hover:underline">
+                              <Link
+                                href={`/pedidos/${pedido.numero_pedido}`}
+                                className="hover:underline"
+                              >
                                 {pedido.numero_pedido}
                               </Link>
                             </TableCell>
                             <TableCell>{cliente?.nome}</TableCell>
-                            <TableCell>{primeiroItem?.produto_nome || "-"}</TableCell>
-                            <TableCell className="text-right">{formatCurrency(pedido.debito_carcaca || 0)}</TableCell>
-                            <TableCell className="text-center">{getDaysPending(pedido.data_venda)}</TableCell>
                             <TableCell>
-                              <StatusBadge status={mapStatusToBadge(pedido.status)} />
+                              {primeiroItem?.produto_nome || "-"}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {formatCurrency(pedido.debito_carcaca || 0)}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              {getDaysPending(pedido.data_venda)}
+                            </TableCell>
+                            <TableCell>
+                              <StatusBadge
+                                status={mapStatusToBadge(pedido.status)}
+                              />
                             </TableCell>
                           </TableRow>
-                        )
+                        );
                       })
                     )}
                   </TableBody>
@@ -303,33 +407,51 @@ export default function VendedorDetalhePage() {
                   <TableBody>
                     {pedidosVendedor.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={7} className="text-center text-muted-foreground">
+                        <TableCell
+                          colSpan={7}
+                          className="text-center text-muted-foreground"
+                        >
                           Nenhum pedido encontrado
                         </TableCell>
                       </TableRow>
                     ) : (
                       pedidosVendedor.map((pedido) => {
-                        const cliente = clientesVendedor.find((c) => c.id === pedido.cliente_id)
-                        const primeiroItem = pedido.order_items?.[0]
+                        const cliente = clientesVendedor.find(
+                          (c) => c.id === pedido.cliente_id
+                        );
+                        const primeiroItem = pedido.order_items?.[0];
                         return (
                           <TableRow key={pedido.id}>
                             <TableCell className="font-mono text-sm">
-                              <Link href={`/pedidos/${pedido.numero_pedido}`} className="hover:underline">
+                              <Link
+                                href={`/pedidos/${pedido.numero_pedido}`}
+                                className="hover:underline"
+                              >
                                 {pedido.numero_pedido}
                               </Link>
                             </TableCell>
                             <TableCell>{cliente?.nome}</TableCell>
-                            <TableCell>{primeiroItem?.produto_nome || "-"}</TableCell>
                             <TableCell>
-                              {pedido.tipo_venda === "Base de Troca" ? "Base de Troca" : "Normal"}
+                              {primeiroItem?.produto_nome || "-"}
                             </TableCell>
-                            <TableCell className="text-right">{formatCurrency(pedido.valor_total || 0)}</TableCell>
-                            <TableCell>{formatDate(pedido.data_venda)}</TableCell>
                             <TableCell>
-                              <StatusBadge status={mapStatusToBadge(pedido.status)} />
+                              {pedido.tipo_venda === "Base de Troca"
+                                ? "Base de Troca"
+                                : "Normal"}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {formatCurrency(pedido.valor_total || 0)}
+                            </TableCell>
+                            <TableCell>
+                              {formatDate(pedido.data_venda)}
+                            </TableCell>
+                            <TableCell>
+                              <StatusBadge
+                                status={mapStatusToBadge(pedido.status)}
+                              />
                             </TableCell>
                           </TableRow>
-                        )
+                        );
                       })
                     )}
                   </TableBody>
@@ -340,5 +462,5 @@ export default function VendedorDetalhePage() {
         </Tabs>
       </div>
     </ProtectedRoute>
-  )
+  );
 }

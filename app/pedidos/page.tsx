@@ -79,7 +79,9 @@ export default function PedidosPage() {
         // Buscar pedidos com relações - se for vendedor, só seus pedidos; outras roles veem todos
         let query = supabase
           .from("orders")
-          .select("*, clients(nome), profiles(nome)")
+          .select(
+            "*, clients(nome), profiles(nome), order_items(id, produto_nome, quantidade, debito_carcaca)"
+          )
           .order("data_venda", { ascending: false });
 
         if (user.role === "Vendedor") {
@@ -322,25 +324,25 @@ export default function PedidosPage() {
               </div>
             ) : (
               <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Número</TableHead>
-                  <TableHead>Cliente</TableHead>
-                  <TableHead>Nº Pedido Origem</TableHead>
-                  <TableHead>Nº Nota Fiscal</TableHead>
-                  <TableHead>Empresa</TableHead>
-                  <TableHead className="text-right">Valor Total</TableHead>
-                  <TableHead className="text-right">Débito</TableHead>
-                  <TableHead>Data</TableHead>
-                  <TableHead>Status</TableHead>
-                  {(user?.role === "admin" ||
-                    user?.role === "Gerente" ||
-                    user?.role === "Coordenador") && (
-                    <TableHead>Vendedor</TableHead>
-                  )}
-                  <TableHead>Obs.</TableHead>
-                </TableRow>
-              </TableHeader>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Número</TableHead>
+                    <TableHead>Cliente</TableHead>
+                    <TableHead>Nº Pedido Origem</TableHead>
+                    <TableHead>Nº Nota Fiscal</TableHead>
+                    <TableHead>Empresa</TableHead>
+                    <TableHead className="text-right">Valor Total</TableHead>
+                    <TableHead className="text-center">Carcaças</TableHead>
+                    <TableHead>Data</TableHead>
+                    <TableHead>Status</TableHead>
+                    {(user?.role === "admin" ||
+                      user?.role === "Gerente" ||
+                      user?.role === "Coordenador") && (
+                      <TableHead>Vendedor</TableHead>
+                    )}
+                    <TableHead>Obs.</TableHead>
+                  </TableRow>
+                </TableHeader>
                 <TableBody>
                   {pedidosFiltrados.length === 0 ? (
                     <TableRow>
@@ -376,10 +378,39 @@ export default function PedidosPage() {
                         <TableCell className="text-right">
                           {formatCurrency(pedido.valor_total || 0)}
                         </TableCell>
-                        <TableCell className="text-right">
-                          {pedido.debito_carcaca > 0
-                            ? `${pedido.debito_carcaca} carcaça(s)`
-                            : "-"}
+                        <TableCell className="text-center">
+                          {(() => {
+                            // Calcular carcaças devolvidas e pendentes
+                            const totalCarcacas =
+                              pedido.order_items?.reduce(
+                                (sum: number, item: any) =>
+                                  sum + (item.quantidade || 0),
+                                0
+                              ) || 0;
+                            const carcacasPendentes =
+                              pedido.order_items?.reduce(
+                                (sum: number, item: any) =>
+                                  sum + (item.debito_carcaca || 0),
+                                0
+                              ) || 0;
+                            const carcacasDevolvidas =
+                              totalCarcacas - carcacasPendentes;
+
+                            if (totalCarcacas === 0) return "-";
+
+                            return (
+                              <div className="flex flex-col gap-1 text-xs">
+                                <div className="text-green-600">
+                                  {carcacasDevolvidas} devolvida(s)
+                                </div>
+                                {carcacasPendentes > 0 && (
+                                  <div className="text-yellow-600">
+                                    {carcacasPendentes} pendente(s)
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </TableCell>
                         <TableCell>{formatDate(pedido.data_venda)}</TableCell>
                         <TableCell>
@@ -437,7 +468,7 @@ export default function PedidosPage() {
               </DialogDescription>
             </DialogHeader>
             <div className="py-4">
-              <p className="text-sm text-foreground whitespace-pre-wrap break-words">
+              <p className="text-sm text-foreground whitespace-pre-wrap wrap-break-word">
                 {observacoesDialog.texto}
               </p>
             </div>
