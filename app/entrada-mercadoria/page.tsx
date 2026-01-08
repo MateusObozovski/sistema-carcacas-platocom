@@ -23,7 +23,8 @@ import {
 } from "@/components/ui/table";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/hooks/use-toast";
-import { Search, Plus, Trash2, Package, CheckCircle } from "lucide-react";
+import { Search, Plus, Trash2, Package, CheckCircle, Upload, FileText, X, Filter } from "lucide-react";
+
 import {
   Select,
   SelectContent,
@@ -49,6 +50,9 @@ import {
   type DatabaseMerchandiseEntry,
   type DatabaseProduct,
   type DatabaseClient,
+  uploadEntryDocuments,
+  getEntryDocuments,
+  type DatabaseEntryDocument,
 } from "@/lib/supabase/database";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -83,6 +87,13 @@ export default function EntradaMercadoriaPage() {
   const [relatorioStatusFiltro, setRelatorioStatusFiltro] = useState<
     "todos" | "Pendente" | "Concluída"
   >("todos");
+  
+  
+  // Novos filtros para Relatórios
+  const [relatorioDataInicio, setRelatorioDataInicio] = useState("");
+  const [relatorioDataFim, setRelatorioDataFim] = useState("");
+  const [relatorioBuscaNota, setRelatorioBuscaNota] = useState("");
+  const [relatorioBuscaRelatorio, setRelatorioBuscaRelatorio] = useState("");
 
   // Filtros para seleção de produtos
   const [produtoFiltroMarca, setProdutoFiltroMarca] = useState<string>("all");
@@ -91,16 +102,22 @@ export default function EntradaMercadoriaPage() {
     useState<string>("all");
   const [produtoBusca, setProdutoBusca] = useState<string>("");
 
-  const [tipoEntrada, setTipoEntrada] = useState<"nota_fiscal" | "rel_entrada">(
-    "nota_fiscal"
-  );
-  const [numeroRelatorio, setNumeroRelatorio] = useState<string>("");
+  const [optionalInvoiceNumber, setOptionalInvoiceNumber] = useState("");
 
   const [formData, setFormData] = useState({
     cliente_id: "",
-    numero_nota_fiscal: "",
+    numero_nota_fiscal: "", // Will store the Report Number
     items: [] as EntryItem[],
   });
+
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  
+  // Document Viewing State
+  const [viewDocsOpen, setViewDocsOpen] = useState(false);
+  const [currentDocs, setCurrentDocs] = useState<DatabaseEntryDocument[]>([]);
+  const [isLoadingDocs, setIsLoadingDocs] = useState(false);
+  const [currentEntryId, setCurrentEntryId] = useState<string>("");
 
   useEffect(() => {
     let isMounted = true;
@@ -139,6 +156,11 @@ export default function EntradaMercadoriaPage() {
         // Buscar produtos
         const produtosData = await getProducts();
         setProdutos(produtosData || []);
+        
+        // Generate initial report number - REMOVED per request
+        // generateRelatorioEntradaNumber().then((numero) => {
+        //   setFormData(prev => ({ ...prev, numero_nota_fiscal: numero }));
+        // });
       } catch (error: any) {
         console.error("[v0] Error fetching data:", error);
 
@@ -197,6 +219,25 @@ export default function EntradaMercadoriaPage() {
     }
   };
 
+  const handleViewDocuments = async (entryId: string) => {
+    setCurrentEntryId(entryId);
+    setViewDocsOpen(true);
+    setIsLoadingDocs(true);
+    try {
+      const docs = await getEntryDocuments(entryId);
+      setCurrentDocs(docs || []);
+    } catch (error) {
+      console.error("Error fetching documents:", error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível carregar os documentos.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingDocs(false);
+    }
+  };
+
   const handleAddItem = () => {
     setFormData({
       ...formData,
@@ -216,6 +257,17 @@ export default function EntradaMercadoriaPage() {
       ...formData,
       items: formData.items.filter((_, i) => i !== index),
     });
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      const newFiles = Array.from(e.target.files);
+      setSelectedFiles((prev) => [...prev, ...newFiles]);
+    }
+  };
+
+  const handleRemoveFile = (index: number) => {
+    setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
   // Função para obter produtos filtrados, excluindo os já adicionados (exceto o item atual)
@@ -250,9 +302,9 @@ export default function EntradaMercadoriaPage() {
         const buscaLower = produtoBusca.toLowerCase();
         const matchNome = p.nome.toLowerCase().includes(buscaLower);
         const matchCodigoFabrica =
-          p.codigo_fabrica?.toLowerCase().includes(buscaLower) || false;
+          p.codigo_fabricante?.toLowerCase().includes(buscaLower) || false;
         const matchCodigoSachs =
-          p.codigo_sachs?.toLowerCase().includes(buscaLower) || false;
+          (p as any).codigo_sachs?.toLowerCase().includes(buscaLower) || false;
 
         if (!matchNome && !matchCodigoFabrica && !matchCodigoSachs)
           return false;
@@ -324,23 +376,10 @@ export default function EntradaMercadoriaPage() {
         return;
       }
 
-      if (
-        tipoEntrada === "nota_fiscal" &&
-        !formData.numero_nota_fiscal.trim()
-      ) {
+      if (!formData.numero_nota_fiscal.trim()) {
         toast({
           title: "Erro",
-          description: "Informe o número da nota fiscal",
-          variant: "destructive",
-        });
-        setIsSubmitting(false);
-        return;
-      }
-
-      if (tipoEntrada === "rel_entrada" && !numeroRelatorio) {
-        toast({
-          title: "Erro",
-          description: "Número do relatório não foi gerado. Tente novamente.",
+          description: "O número do Relatório de Entrada é obrigatório.",
           variant: "destructive",
         });
         setIsSubmitting(false);
@@ -392,13 +431,17 @@ export default function EntradaMercadoriaPage() {
         produtosIds.add(item.produtoId);
       }
 
-      await createMerchandiseEntry(
+      let finalNotaFiscal = formData.numero_nota_fiscal.trim();
+      if (optionalInvoiceNumber.trim()) {
+        finalNotaFiscal = `${finalNotaFiscal} (NF: ${optionalInvoiceNumber.trim()})`;
+      }
+
+
+
+      const createdEntry = await createMerchandiseEntry(
         {
           cliente_id: formData.cliente_id,
-          numero_nota_fiscal:
-            tipoEntrada === "nota_fiscal"
-              ? formData.numero_nota_fiscal.trim()
-              : numeroRelatorio,
+          numero_nota_fiscal: finalNotaFiscal,
           data_nota: new Date().toISOString(), // Sempre usa a data de hoje
           status: "Pendente",
           created_by: user!.id,
@@ -409,6 +452,27 @@ export default function EntradaMercadoriaPage() {
           quantidade: item.quantidade,
         }))
       );
+
+      // Upload Documents
+      if (selectedFiles.length > 0) {
+        setIsUploading(true);
+        try {
+            await uploadEntryDocuments(createdEntry.id, selectedFiles);
+            toast({
+                title: "Documentos enviados",
+                description: "Os documentos foram anexados com sucesso.",
+            });
+        } catch (uploadError) {
+             console.error("Error uploading documents:", uploadError);
+             toast({
+                title: "Erro no envio de documentos",
+                description: "A entrada foi criada, mas houve erro ao enviar alguns documentos.",
+                variant: "destructive"
+             });
+        } finally {
+            setIsUploading(false);
+        }
+      }
 
       toast({
         title: "Sucesso",
@@ -421,8 +485,15 @@ export default function EntradaMercadoriaPage() {
         numero_nota_fiscal: "",
         items: [],
       });
-      setTipoEntrada("nota_fiscal");
-      setNumeroRelatorio("");
+      setOptionalInvoiceNumber("");
+      setSelectedFiles([]);
+      setIsUploading(false);
+      
+      // Regenerate report number for next entry - REMOVED per request
+      // generateRelatorioEntradaNumber().then((numero) => {
+      //   setFormData(prev => ({ ...prev, numero_nota_fiscal: numero }));
+      // });
+
       // Reset filtros de produtos
       setProdutoFiltroMarca("all");
       setProdutoFiltroTipo("all");
@@ -433,6 +504,21 @@ export default function EntradaMercadoriaPage() {
       // Recarregar lista
       const entradasData = await getMerchandiseEntries(user!.id, user!.role);
       setEntradas(entradasData || []);
+
+      // Upload de documentos (se houver)
+      if (selectedFiles.length > 0) {
+        setIsUploading(true);
+        toast({
+            title: "Enviando documentos...",
+            description: "Por favor aguarde enquanto os documentos são enviados.",
+        });
+        
+        // entryData returns the created entry. We need to capture it.
+        // The createMerchandiseEntry function returns entryData as the result of the promise if successful.
+        // Wait, the current implementation of createMerchandiseEntry doesn't return the ID easily here because I didn't capture the result.
+        // Let's refactor the call above to capture the result.
+        // Actually, createMerchandiseEntry DOES return entryData. I just didn't assign it to a variable.
+      }
     } catch (error: any) {
       console.error("[v0] Error creating merchandise entry:", error);
       toast({
@@ -486,7 +572,43 @@ export default function EntradaMercadoriaPage() {
     const matchStatus =
       relatorioStatusFiltro === "todos" ||
       entrada.status === relatorioStatusFiltro;
-    return matchCliente && matchStatus;
+
+      
+    // Filtro por Data
+    let matchData = true;
+    if (relatorioDataInicio || relatorioDataFim) {
+        const dataEntrada = new Date(entrada.data_nota).setHours(0,0,0,0);
+        if (relatorioDataInicio) {
+            const dataInicio = new Date(relatorioDataInicio).setHours(0,0,0,0);
+            if (dataEntrada < dataInicio) matchData = false;
+        }
+        if (relatorioDataFim) {
+            const dataFim = new Date(relatorioDataFim).setHours(0,0,0,0);
+            if (dataEntrada > dataFim) matchData = false;
+        }
+    }
+
+    // Filtro por Número da Nota e Relatório
+    // Ambos são armazenados em numero_nota_fiscal: "REL-YYYY-NNNN (NF: XXXXX)"
+    let matchNota = true;
+    let matchRelatorio = true;
+
+    if (relatorioBuscaNota) {
+         // O número da nota está geralmente dentro de (NF: ...), mas vamos buscar no string todo
+         // para ser flexível, mas idealmente buscaríamos só na parte da nota.
+         // Se o usuário digitar "123", deve achar.
+         if (!entrada.numero_nota_fiscal.toLowerCase().includes(relatorioBuscaNota.toLowerCase())) {
+             matchNota = false;
+         }
+    }
+
+    if (relatorioBuscaRelatorio) {
+        if (!entrada.numero_nota_fiscal.toLowerCase().includes(relatorioBuscaRelatorio.toLowerCase())) {
+            matchRelatorio = false;
+        }
+    }
+
+    return matchCliente && matchStatus && matchData && matchNota && matchRelatorio;
   });
 
   return (
@@ -569,11 +691,12 @@ export default function EntradaMercadoriaPage() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Nota Fiscal</TableHead>
+                        <TableHead>Relatório de Entrada</TableHead>
                         <TableHead>Cliente</TableHead>
                         <TableHead>Data da Nota</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Data de Registro</TableHead>
+                        <TableHead className="text-right">Ações</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -599,6 +722,16 @@ export default function EntradaMercadoriaPage() {
                           </TableCell>
                           <TableCell>
                             {formatDate(entrada.created_at)}
+                          </TableCell>
+                          <TableCell className="text-right">
+                             <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleViewDocuments(entrada.id)}
+                                title="Ver Anexos"
+                             >
+                                <FileText className="h-4 w-4" />
+                             </Button>
                           </TableCell>
                         </TableRow>
                       ))}
@@ -656,6 +789,61 @@ export default function EntradaMercadoriaPage() {
                     </Select>
                   </div>
                 </div>
+                
+                
+                {/* Visual Improved Filters */}
+                <div className="mt-6 pt-6 border-t">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Filter className="w-4 h-4 text-muted-foreground" />
+                    <h3 className="text-sm font-medium text-muted-foreground">Filtros Avançados</h3>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 gap-6 md:grid-cols-4 lg:grid-cols-4">
+                       <div className="space-y-2">
+                          <Label htmlFor="relatorio-data-inicio" className="text-xs font-semibold text-muted-foreground uppercase">Data Inicial</Label>
+                          <Input
+                              id="relatorio-data-inicio"
+                              type="date"
+                              value={relatorioDataInicio}
+                              onChange={(e) => setRelatorioDataInicio(e.target.value)}
+                              className="h-10"
+                          />
+                       </div>
+
+                       <div className="space-y-2">
+                          <Label htmlFor="relatorio-data-fim" className="text-xs font-semibold text-muted-foreground uppercase">Data Final</Label>
+                          <Input
+                              id="relatorio-data-fim"
+                              type="date"
+                              value={relatorioDataFim}
+                              onChange={(e) => setRelatorioDataFim(e.target.value)}
+                              className="h-10"
+                          />
+                       </div>
+
+                       <div className="space-y-2">
+                          <Label htmlFor="relatorio-busca-relatorio" className="text-xs font-semibold text-muted-foreground uppercase">Nº Relatório</Label>
+                          <Input
+                              id="relatorio-busca-relatorio"
+                              placeholder="REL-..."
+                              value={relatorioBuscaRelatorio}
+                              onChange={(e) => setRelatorioBuscaRelatorio(e.target.value)}
+                              className="h-10"
+                          />
+                       </div>
+
+                       <div className="space-y-2">
+                          <Label htmlFor="relatorio-busca-nota" className="text-xs font-semibold text-muted-foreground uppercase">Nº Nota Fiscal</Label>
+                          <Input
+                              id="relatorio-busca-nota"
+                              placeholder="Digite o número..."
+                              value={relatorioBuscaNota}
+                              onChange={(e) => setRelatorioBuscaNota(e.target.value)}
+                              className="h-10"
+                          />
+                       </div>
+                  </div>
+                </div>
               </CardContent>
             </Card>
 
@@ -678,27 +866,64 @@ export default function EntradaMercadoriaPage() {
                 ) : (
                   <div className="space-y-6">
                     {entradasRelatorioFiltradas.map((entrada) => (
-                      <Card key={entrada.id} className="p-4">
-                        <div className="mb-4 space-y-2">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <h3 className="text-lg font-semibold">
-                                Nota Fiscal: {entrada.numero_nota_fiscal}
-                              </h3>
-                              <p className="text-sm text-muted-foreground">
-                                Cliente: {entrada.clients?.nome || "N/A"} |
-                                Data: {formatDate(entrada.data_nota)}
-                              </p>
+                      <Card key={entrada.id} className="p-4 hover:shadow-md transition-shadow">
+                        <div className="mb-4">
+                          <div className="flex items-start justify-between mb-3">
+                            <div className="flex-1 space-y-2">
+                              {/* Extract and display Report Number and Invoice Number separately */}
+                              {(() => {
+                                const notaFiscal = entrada.numero_nota_fiscal || "";
+                                // Try to parse "REL-YYYY-NNNN (NF: XXXXX)" format
+                                const relMatch = notaFiscal.match(/^(REL-[^\s(]+)/);
+                                const nfMatch = notaFiscal.match(/\(NF:\s*([^)]+)\)/);
+                                const relatorio = relMatch ? relMatch[1] : notaFiscal;
+                                const notaNumero = nfMatch ? nfMatch[1] : null;
+                                
+                                return (
+                                  <>
+                                    <div className="flex items-center gap-3">
+                                      <h3 className="text-lg font-bold text-foreground">
+                                        {relatorio}
+                                      </h3>
+                                      <Badge
+                                        variant={
+                                          entrada.status === "Concluída"
+                                            ? "default"
+                                            : "secondary"
+                                        }
+                                        className="ml-auto"
+                                      >
+                                        {entrada.status}
+                                      </Badge>
+                                    </div>
+                                    {notaNumero && (
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-xs font-medium text-muted-foreground uppercase">Nota Fiscal:</span>
+                                        <span className="text-sm font-semibold text-foreground">{notaNumero}</span>
+                                      </div>
+                                    )}
+                                  </>
+                                );
+                              })()}
+                              <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                                <span className="flex items-center gap-1">
+                                  <Package className="h-3.5 w-3.5" />
+                                  {entrada.clients?.nome || "N/A"}
+                                </span>
+                                <span>•</span>
+                                <span>{formatDate(entrada.data_nota)}</span>
+                              </div>
                             </div>
-                            <Badge
-                              variant={
-                                entrada.status === "Concluída"
-                                  ? "default"
-                                  : "secondary"
-                              }
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleViewDocuments(entrada.id)}
+                              title="Ver Anexos"
+                              className="ml-4"
                             >
-                              {entrada.status}
-                            </Badge>
+                              <FileText className="h-4 w-4 mr-2" />
+                              Anexos
+                            </Button>
                           </div>
                         </div>
                         <Table>
@@ -775,11 +1000,16 @@ export default function EntradaMercadoriaPage() {
               // Reset form when closing
               setFormData({
                 cliente_id: "",
-                numero_nota_fiscal: "",
+                numero_nota_fiscal: "", // Keep it empty or regen? Regen is better but async.
                 items: [],
               });
-              setTipoEntrada("nota_fiscal");
-              setNumeroRelatorio("");
+               setOptionalInvoiceNumber("");
+               setSelectedFiles([]);
+               setIsUploading(false);
+              // Start regen - REMOVED per request
+               // generateRelatorioEntradaNumber().then((numero) => {
+               //    setFormData(prev => ({ ...prev, numero_nota_fiscal: numero }));
+               // });
             }
           }}
         >
@@ -817,72 +1047,70 @@ export default function EntradaMercadoriaPage() {
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="tipo_entrada">Tipo de Entrada *</Label>
-                    <Select
-                      value={tipoEntrada}
-                      onValueChange={(value: "nota_fiscal" | "rel_entrada") => {
-                        setTipoEntrada(value);
-                        if (value === "rel_entrada") {
-                          // Gerar número do relatório automaticamente
-                          generateRelatorioEntradaNumber().then((numero) => {
-                            setNumeroRelatorio(numero);
-                            setFormData({
-                              ...formData,
-                              numero_nota_fiscal: numero,
-                            });
-                          });
-                        } else {
-                          setNumeroRelatorio("");
-                          setFormData({ ...formData, numero_nota_fiscal: "" });
-                        }
-                      }}
-                      disabled={isSubmitting}
-                    >
-                      <SelectTrigger id="tipo_entrada">
-                        <SelectValue placeholder="Selecione o tipo" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="nota_fiscal">Nota Fiscal</SelectItem>
-                        <SelectItem value="rel_entrada">
-                          Rel. de Entrada
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <Label htmlFor="numero_relatorio">
+                       Número do Rel. de Entrada *
+                    </Label>
+                    <Input
+                       id="numero_relatorio"
+                       value={formData.numero_nota_fiscal}
+                       onChange={(e) => setFormData({...formData, numero_nota_fiscal: e.target.value})}
+                       placeholder="Digite o numero do Relatório de Entrada"
+                       required
+                    />
                   </div>
-                </div>
-                <div className="space-y-2">
-                  {tipoEntrada === "nota_fiscal" ? (
-                    <>
-                      <Label htmlFor="numero_nota">
-                        Número da Nota Fiscal *
-                      </Label>
-                      <Input
-                        id="numero_nota"
-                        value={formData.numero_nota_fiscal}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            numero_nota_fiscal: e.target.value,
-                          })
-                        }
-                        disabled={isSubmitting}
-                        required
-                        placeholder="Ex: 123456"
-                      />
-                    </>
-                  ) : (
-                    <>
-                      <Label htmlFor="numero_relatorio">
-                        Número do Rel. de Entrada
-                      </Label>
-                      <Input
-                        id="numero_relatorio"
-                        value={numeroRelatorio}
-                        disabled
-                        className="bg-muted"
-                      />
-                    </>
-                  )}
+                  <div className="space-y-2">
+                    <Label htmlFor="numero_nota_opcional">
+                       Número da Nota Fiscal (Opcional)
+                    </Label>
+                    <Input
+                       id="numero_nota_opcional"
+                       value={optionalInvoiceNumber}
+                       onChange={(e) => setOptionalInvoiceNumber(e.target.value)}
+                       placeholder="Digite o número da nota se houver"
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="documentos">Anexar Documentos</Label>
+                    <div className="flex items-center gap-2">
+                        <Input
+                            id="documentos"
+                            type="file"
+                            multiple
+                            onChange={handleFileSelect}
+                            className="hidden"
+                        />
+                        <Label
+                            htmlFor="documentos"
+                            className="flex h-10 w-full cursor-pointer items-center justify-center rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background hover:bg-accent hover:text-accent-foreground"
+                        >
+                            <Upload className="mr-2 h-4 w-4" />
+                            Selecionar Arquivos
+                        </Label>
+                    </div>
+                    {selectedFiles.length > 0 && (
+                        <div className="mt-2 space-y-2">
+                            {selectedFiles.map((file, index) => (
+                                <div key={index} className="flex items-center justify-between rounded-md border p-2 text-sm">
+                                    <div className="flex items-center truncate">
+                                        <FileText className="mr-2 h-4 w-4 text-muted-foreground" />
+                                        <span className="truncate max-w-[200px]">{file.name}</span>
+                                        <span className="ml-2 text-xs text-muted-foreground">({(file.size / 1024).toFixed(0)} KB)</span>
+                                    </div>
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        onClick={() => handleRemoveFile(index)}
+                                        className="h-6 w-6"
+                                    >
+                                        <X className="h-4 w-4" />
+                                    </Button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                  </div>
                 </div>
 
                 <div className="space-y-2">
@@ -1058,10 +1286,10 @@ export default function EntradaMercadoriaPage() {
                                         value={produto.id}
                                       >
                                         {produto.nome}
-                                        {produto.codigo_fabrica &&
-                                          ` (${produto.codigo_fabrica})`}
-                                        {produto.codigo_sachs &&
-                                          ` - ${produto.codigo_sachs}`}
+                                        {produto.codigo_fabricante &&
+                                          ` (${produto.codigo_fabricante})`}
+                                        {(produto as any).codigo_sachs &&
+                                          ` - ${(produto as any).codigo_sachs}`}
                                       </SelectItem>
                                     ));
                                   })()}
@@ -1111,11 +1339,49 @@ export default function EntradaMercadoriaPage() {
                 >
                   Cancelar
                 </Button>
-                <Button type="submit" disabled={isSubmitting}>
-                  {isSubmitting ? "Salvando..." : "Salvar Entrada"}
+                <Button type="submit" disabled={isSubmitting || isUploading}>
+                  {isSubmitting || isUploading ? "Salvando..." : "Salvar Entrada"}
                 </Button>
               </DialogFooter>
             </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* Dialog para Visualizar Documentos */}
+        <Dialog open={viewDocsOpen} onOpenChange={setViewDocsOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Documentos Anexados</DialogTitle>
+              <DialogDescription>
+                Lista de arquivos anexados à entrada
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+               {isLoadingDocs ? (
+                 <div className="py-4 text-center text-muted-foreground">Carregando documentos...</div>
+               ) : currentDocs.length === 0 ? (
+                 <div className="py-4 text-center text-muted-foreground">Nenhum documento anexado.</div>
+               ) : (
+                 <div className="space-y-2">
+                    {currentDocs.map((doc) => (
+                        <div key={doc.id} className="flex items-center justify-between p-3 border rounded-md hover:bg-muted/50 transition-colors">
+                            <div className="flex items-center truncate">
+                                <FileText className="mr-3 h-5 w-5 text-blue-500" />
+                                <div className="truncate">
+                                    <p className="text-sm font-medium truncate max-w-[200px]" title={doc.name}>{doc.name}</p>
+                                    <p className="text-xs text-muted-foreground">{(doc.size / 1024).toFixed(1)} KB • {new Date(doc.created_at).toLocaleDateString()}</p>
+                                </div>
+                            </div>
+                            <Button variant="outline" size="sm" asChild>
+                                <a href={doc.url} target="_blank" rel="noopener noreferrer" title="Baixar/Visualizar">
+                                    <Upload className="h-4 w-4 rotate-180" /> {/* Download icon hack */}
+                                </a>
+                            </Button>
+                        </div>
+                    ))}
+                 </div>
+               )}
+            </div>
           </DialogContent>
         </Dialog>
       </div>

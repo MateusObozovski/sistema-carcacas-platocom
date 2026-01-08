@@ -28,11 +28,11 @@ export default function LoginPage() {
     try {
       console.log("[v0] Login form submitted")
 
-      const success = await login(email, password)
+      const result = await login(email, password)
 
-      console.log("[v0] Login result:", success)
+      console.log("[v0] Login result:", result)
 
-      if (success) {
+      if (result.success) {
         console.log("[v0] Redirecting to dashboard...")
         // Pequeno delay para garantir que o estado foi atualizado
         setTimeout(() => {
@@ -40,7 +40,11 @@ export default function LoginPage() {
         }, 100)
       } else {
         // Verificar no console qual foi o erro específico
-        setError("Não foi possível fazer login. Verifique o console do navegador para mais detalhes.")
+        if (result.error === "Invalid login credentials") {
+          setError("Usuário ou senha incorretos!")
+        } else {
+          setError(result.error || "Não foi possível fazer login. Verifique o console do navegador para mais detalhes.")
+        }
       }
     } catch (error) {
       console.error("[v0] Login error:", error)

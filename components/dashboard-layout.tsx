@@ -1,15 +1,16 @@
 "use client";
 
+import { useRouter, usePathname } from "next/navigation";
 import type React from "react";
 import { useState, useCallback, useEffect } from "react";
 import { DashboardHeader } from "@/components/dashboard-header";
 import { DashboardNav } from "@/components/dashboard-nav";
 import { useAuth } from "@/lib/auth-context";
-import { usePathname } from "next/navigation";
 
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
   const pathname = usePathname();
+  const router = useRouter();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // Use useCallback para manter a mesma referência da função
@@ -21,24 +22,20 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     setIsSidebarOpen((prev) => !prev);
   }, []);
 
-  const publicPaths = ["/", "/login", "/setup"];
+  const publicPaths = ["/", "/login"];
   const isPublicPath = publicPaths.includes(pathname);
 
   useEffect(() => {
     // Se for operador, só pode acessar /entrada-mercadoria
-    if (
-      !isLoading &&
-      user &&
-      user.role === "operador" &&
-      pathname !== "/entrada-mercadoria" &&
-      !isPublicPath
-    ) {
-      console.log(
-        "[v0] DashboardLayout: Operador trying to access restricted page, redirecting to entrada-mercadoria"
-      );
-      window.location.href = "/entrada-mercadoria";
+    if (!isLoading && user && user.role === "operador") {
+      if (pathname !== "/entrada-mercadoria") {
+        console.log(
+          "[v0] DashboardLayout: Operador trying to access restricted page, redirecting to entrada-mercadoria"
+        );
+        router.push("/entrada-mercadoria");
+      }
     }
-  }, [user, isLoading, isPublicPath, pathname]);
+  }, [user, isLoading, pathname, router]);
 
   if (isPublicPath) {
     return <>{children}</>;

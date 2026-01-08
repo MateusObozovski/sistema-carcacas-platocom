@@ -883,10 +883,8 @@ export async function getMerchandiseEntries(
     )
     .order("created_at", { ascending: false });
 
-  // Se for operador, só ver suas próprias entradas
-  if (userRole === "operador" && userId) {
-    query = query.eq("created_by", userId);
-  }
+  // Operadores agora veem todas as entradas, não apenas as suas
+  // Removido filtro: if (userRole === "operador" && userId) { query = query.eq("created_by", userId); }
 
   const { data, error } = await query;
 
@@ -1146,10 +1144,8 @@ export async function getMerchandiseEntriesWithLinks(
     )
     .order("created_at", { ascending: false });
 
-  // Se for operador, só ver suas próprias entradas
-  if (userRole === "operador" && userId) {
-    query = query.eq("created_by", userId);
-  }
+  // Operadores agora veem todas as entradas, não apenas as suas
+  // Removido filtro: if (userRole === "operador" && userId) { query = query.eq("created_by", userId); }
 
   const { data, error } = await query;
 
@@ -1173,4 +1169,99 @@ export async function getMerchandiseEntriesWithLinks(
       } | null;
     })[];
   })[];
+}
+
+// Documents
+export interface DatabaseEntryDocument {
+  id: string;
+  entry_id: string;
+  name: string;
+  url: string;
+  type: string;
+  size: number;
+  created_at: string;
+}
+
+export async function uploadEntryDocuments(
+  entryId: string,
+  files: File[]
+): Promise<DatabaseEntryDocument[]> {
+  const supabase = createClient();
+  const uploadedDocs: DatabaseEntryDocument[] = [];
+
+  for (const file of files) {
+    // Sanitize filename
+    const sanitizedName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
+    const filePath = `entries/${entryId}/${Date.now()}_${sanitizedName}`;
+
+    try {
+      // 1. Upload to Storage
+      const { data: storageData, error: storageError } = await supabase.storage
+        .from("documents") // Make sure this bucket is created and public
+        .upload(filePath, file, {
+          cacheControl: "3600",
+          upsert: false,
+        });
+
+      if (storageError) {
+        console.error(
+          `[v0] Error uploading file ${file.name}:`,
+          storageError.message
+        );
+        continue;
+      }
+
+      // 2. Get Public URL
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from("documents").getPublicUrl(filePath);
+
+      // 3. Insert into Database
+      const { data: docData, error: dbError } = await supabase
+        .from("merchandise_entry_items_documents")
+        .insert({
+          entry_id: entryId,
+          name: file.name,
+          url: publicUrl,
+          type: file.type,
+          size: file.size,
+        })
+        .select()
+        .single();
+
+      if (dbError) {
+        console.error(
+          `[v0] Error saving document metadata for ${file.name}:`,
+          dbError.message
+        );
+        // Optional: Delete from storage if DB insert fails to keep clean
+        continue;
+      }
+
+      if (docData) {
+        uploadedDocs.push(docData as DatabaseEntryDocument);
+      }
+    } catch (error) {
+      console.error(`[v0] Unexpected error handling file ${file.name}:`, error);
+    }
+  }
+
+  return uploadedDocs;
+}
+
+export async function getEntryDocuments(entryId: string) {
+  const supabase = createClient();
+  
+  const { data, error } = await supabase
+    .from("merchandise_entry_items_documents")
+    .select("*")
+    .eq("entry_id", entryId)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    console.error("[v0] Error fetching entry documents:", error);
+    throw error;
+  }
+
+  return data as DatabaseEntryDocument[];
 }

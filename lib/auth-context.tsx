@@ -16,7 +16,7 @@ const APP_VERSION = "1.0.0";
 
 interface AuthContextType {
   user: User | null;
-  login: (email: string, password: string) => Promise<boolean>;
+  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   isLoading: boolean;
 }
@@ -374,7 +374,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const login = async (email: string, password: string): Promise<boolean> => {
+  const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
     try {
       console.log("[v0] Attempting login for:", email);
 
@@ -384,8 +384,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
 
       if (error) {
-        console.error("[v0] Login error:", error.message);
-        return false;
+        // Don't error on invalid credentials, just warn
+        if (error.message === "Invalid login credentials") {
+          console.warn("[v0] Login failed:", error.message);
+        } else {
+          console.error("[v0] Login error:", error.message);
+        }
+        return { success: false, error: error.message };
       }
 
       if (data.user) {
@@ -433,11 +438,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             });
             userLoaded.current = true;
             currentUserId.current = createdProfile.id;
-            console.log(
-              "[v0] Profile created and login complete - role:",
-              userRole
-            );
-            return true;
+            return { success: true };
           }
 
           // Não foi possível criar profile, força logout para limpar sessão inválida
@@ -445,7 +446,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser(null);
           userLoaded.current = false;
           currentUserId.current = null;
-          return false;
+          return { success: false, error: "Falha ao criar perfil de usuário." };
         }
 
         if (profile) {
@@ -464,7 +465,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             "profile.role:",
             profile.role
           );
-          return true;
+          return { success: true };
         } else {
           console.error("[v0] No profile found for user ID:", data.user.id);
           console.log("[v0] User metadata:", data.user.user_metadata);
@@ -494,7 +495,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               "[v0] Profile created and login complete - role:",
               userRole
             );
-            return true;
+            return { success: true };
           }
 
           console.error(
@@ -504,14 +505,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser(null);
           userLoaded.current = false;
           currentUserId.current = null;
-          return false;
+          return { success: false, error: "Falha ao processar login." };
         }
       }
 
-      return false;
+      return { success: false, error: "Login com falha desconhecida." };
     } catch (error) {
       console.error("[v0] Login exception:", error);
-      return false;
+      return { success: false, error: error instanceof Error ? error.message : "Erro inesperado no login." };
     }
   };
 

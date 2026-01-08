@@ -52,7 +52,7 @@ export async function updateSession(request: NextRequest) {
   const isPublicPath =
     pathname === "/" ||
     pathname === "/login" ||
-    pathname === "/setup" ||
+    pathname === "/login" ||
     pathname.startsWith("/api/setup-users") ||
     pathname.startsWith("/api/create-profile") ||
     pathname.startsWith("/_next") ||
@@ -110,7 +110,7 @@ export async function updateSession(request: NextRequest) {
     supabaseResponse.headers.set("Cache-Control", "private, no-cache, no-store, must-revalidate")
     supabaseResponse.headers.set("Pragma", "no-cache")
     supabaseResponse.headers.set("Expires", "0")
-  } else if (isPublicPath && pathname !== "/login" && pathname !== "/setup") {
+  } else if (isPublicPath && pathname !== "/login") {
     // Páginas públicas podem ter cache com revalidação
     supabaseResponse.headers.set("Cache-Control", "public, s-maxage=60, stale-while-revalidate=300")
   }
