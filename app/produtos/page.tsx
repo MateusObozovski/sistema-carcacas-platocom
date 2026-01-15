@@ -51,16 +51,20 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
-  getAllProducts,
+  getProductsPaginated,
   createProduct,
   updateProduct,
   deleteProduct,
   isProductUsedInOrders,
+  getProductsUsageMap,
+  getDistinctMarcas,
+  getDistinctTipos,
+  getDistinctCategorias,
   type DatabaseProduct,
+  type ProductFilters,
 } from "@/lib/supabase/database";
 import { isAuthError } from "@/lib/utils";
 import { useRouter } from "next/navigation";
-import { PRODUCT_MARCAS } from "@/lib/types";
 
 export default function ProdutosPage() {
   const { toast } = useToast();
@@ -80,6 +84,17 @@ export default function ProdutosPage() {
     Record<string, boolean>
   >({});
 
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const pageSize = 50;
+
+  // Dynamic filter options
+  const [availableMarcas, setAvailableMarcas] = useState<string[]>([]);
+  const [availableTipos, setAvailableTipos] = useState<string[]>([]);
+  const [availableCategorias, setAvailableCategorias] = useState<string[]>([]);
+
   const [formData, setFormData] = useState({
     codigo: "",
     codigo_fabricante: "",
@@ -94,32 +109,37 @@ export default function ProdutosPage() {
     ativo: true,
   });
 
-  const loadProducts = async () => {
+  const loadProducts = async (page: number = currentPage) => {
     try {
       setLoading(true);
-      const data = await getAllProducts();
+      
+      // Preparar filtros
+      const filters: ProductFilters = {
+        searchTerm: searchTerm || undefined,
+        marca: filterMarca !== "all" ? filterMarca : undefined,
+        tipo: filterTipo !== "all" ? filterTipo : undefined,
+        categoria: filterCategoria !== "all" ? filterCategoria : undefined,
+      };
 
-      setProducts(data);
+      // Carregar produtos paginados, mapa de uso e filtros dinâmicos em paralelo
+      const [paginatedResult, usageMap, marcas, tipos, categorias] = await Promise.all([
+        getProductsPaginated(page, pageSize, filters),
+        getProductsUsageMap(),
+        getDistinctMarcas(),
+        getDistinctTipos(),
+        getDistinctCategorias(),
+      ]);
 
-      // Verificar quais produtos estão sendo usados em pedidos
-      const usageMap: Record<string, boolean> = {};
-      for (const product of data) {
-        try {
-          usageMap[product.id] = await isProductUsedInOrders(product.id);
-        } catch (error: any) {
-          console.error(
-            `[v0] Error checking usage for product ${product.id}:`,
-            error
-          );
-          // Se for erro de auth, não continuar verificando
-          if (isAuthError(error)) {
-            throw error;
-          }
-          usageMap[product.id] = false;
-        }
-      }
-
+      setProducts(paginatedResult.data);
+      setTotalPages(paginatedResult.totalPages);
+      setTotalCount(paginatedResult.count);
+      setCurrentPage(paginatedResult.page);
       setProductUsageMap(usageMap);
+      
+      // Atualizar opções de filtro dinâmicas
+      setAvailableMarcas(marcas);
+      setAvailableTipos(tipos);
+      setAvailableCategorias(categorias);
     } catch (error: any) {
       console.error("[v0] Error loading products:", error);
 
@@ -144,28 +164,23 @@ export default function ProdutosPage() {
 
       setProducts([]);
       setProductUsageMap({});
+      setTotalPages(1);
+      setTotalCount(0);
     } finally {
       setLoading(false);
     }
   };
 
+  // Reload products when filters change (reset to page 1)
+  useEffect(() => {
+    setCurrentPage(1);
+    loadProducts(1);
+  }, [searchTerm, filterMarca, filterTipo, filterCategoria]);
+
+  // Initial load
   useEffect(() => {
     loadProducts();
-  }, [toast, router]);
-
-  const tipos = Array.from(new Set(products.map((p) => p.tipo))).sort();
-
-  const filteredProducts = products.filter((product) => {
-    const matchesSearch =
-      product.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.marca.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesMarca = filterMarca === "all" || product.marca === filterMarca;
-    const matchesTipo = filterTipo === "all" || product.tipo === filterTipo;
-    const matchesCategoria =
-      filterCategoria === "all" || product.categoria === filterCategoria;
-
-    return matchesSearch && matchesMarca && matchesTipo && matchesCategoria;
-  });
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -502,11 +517,17 @@ export default function ProdutosPage() {
                       <SelectValue placeholder="Selecione a marca" />
                     </SelectTrigger>
                     <SelectContent>
-                      {PRODUCT_MARCAS.map((marca) => (
-                        <SelectItem key={marca} value={marca}>
-                          {marca}
+                      {availableMarcas.length > 0 ? (
+                        availableMarcas.map((marca) => (
+                          <SelectItem key={marca} value={marca}>
+                            {marca}
+                          </SelectItem>
+                        ))
+                      ) : (
+                        <SelectItem value="" disabled>
+                          Carregando marcas...
                         </SelectItem>
-                      ))}
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
@@ -656,7 +677,7 @@ export default function ProdutosPage() {
               <div className="flex flex-col gap-3">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-lg md:text-xl">
-                    Produtos ({filteredProducts.length})
+                    Produtos ({totalCount})
                   </CardTitle>
                 </div>
 
@@ -699,7 +720,7 @@ export default function ProdutosPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todas Marcas</SelectItem>
-                    {PRODUCT_MARCAS.map((marca) => (
+                    {availableMarcas.map((marca) => (
                       <SelectItem key={marca} value={marca}>
                         {marca}
                       </SelectItem>
@@ -713,7 +734,7 @@ export default function ProdutosPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todos Tipos</SelectItem>
-                    {tipos.map((tipo) => (
+                    {availableTipos.map((tipo) => (
                       <SelectItem key={tipo} value={tipo}>
                         {tipo}
                       </SelectItem>
@@ -730,11 +751,11 @@ export default function ProdutosPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todas Categorias</SelectItem>
-                    <SelectItem value="kit">Kit</SelectItem>
-                    <SelectItem value="plato">Platô</SelectItem>
-                    <SelectItem value="mancal">Mancal</SelectItem>
-                    <SelectItem value="disco">Disco</SelectItem>
-                    <SelectItem value="outros">Outros</SelectItem>
+                    {availableCategorias.map((categoria) => (
+                      <SelectItem key={categoria} value={categoria}>
+                        {categoria.charAt(0).toUpperCase() + categoria.slice(1)}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
 
@@ -759,7 +780,7 @@ export default function ProdutosPage() {
           </CardHeader>
           <CardContent>
             <div className="block md:hidden space-y-3">
-              {filteredProducts.map((product) => (
+              {products.map((product) => (
                 <Card key={product.id} className="border-border">
                   <CardContent className="p-4">
                     <div className="flex flex-col gap-3">
@@ -860,7 +881,7 @@ export default function ProdutosPage() {
                 </Card>
               ))}
 
-              {filteredProducts.length === 0 && (
+              {products.length === 0 && (
                 <div className="text-center py-8 text-muted-foreground">
                   Nenhum produto encontrado
                 </div>
@@ -907,7 +928,7 @@ export default function ProdutosPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredProducts.map((product) => (
+                  {products.map((product) => (
                     <TableRow key={product.id}>
                       <TableCell className="px-3 py-4 text-sm font-medium">
                         {product.codigo || "-"}
@@ -1003,6 +1024,33 @@ export default function ProdutosPage() {
                 </TableBody>
               </Table>
             </div>
+
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between px-2 py-4 border-t">
+                <div className="text-sm text-muted-foreground">
+                  Página {currentPage} de {totalPages} ({totalCount} produtos)
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => loadProducts(currentPage - 1)}
+                    disabled={currentPage === 1 || loading}
+                  >
+                    Anterior
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => loadProducts(currentPage + 1)}
+                    disabled={currentPage === totalPages || loading}
+                  >
+                    Próxima
+                  </Button>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

@@ -93,6 +93,138 @@ export async function getAllProducts() {
   return data as DatabaseProduct[];
 }
 
+/**
+ * Busca produtos com paginação e filtros
+ */
+export interface ProductFilters {
+  searchTerm?: string;
+  marca?: string;
+  tipo?: string;
+  categoria?: string;
+  ativo?: boolean;
+}
+
+export async function getProductsPaginated(
+  page: number = 1,
+  pageSize: number = 50,
+  filters?: ProductFilters
+) {
+  const supabase = createClient();
+  
+  let query = supabase
+    .from("products")
+    .select("*", { count: "exact" });
+
+  // Aplicar filtros
+  if (filters?.ativo !== undefined) {
+    query = query.eq("ativo", filters.ativo);
+  }
+
+  if (filters?.marca && filters.marca !== "all") {
+    query = query.eq("marca", filters.marca);
+  }
+
+  if (filters?.tipo && filters.tipo !== "all") {
+    query = query.eq("tipo", filters.tipo);
+  }
+
+  if (filters?.categoria && filters.categoria !== "all") {
+    query = query.eq("categoria", filters.categoria);
+  }
+
+  if (filters?.searchTerm && filters.searchTerm.trim()) {
+    const searchLower = filters.searchTerm.toLowerCase();
+    query = query.or(
+      `nome.ilike.%${searchLower}%,marca.ilike.%${searchLower}%,codigo.ilike.%${searchLower}%,codigo_fabricante.ilike.%${searchLower}%`
+    );
+  }
+
+  // Paginação
+  const from = (page - 1) * pageSize;
+  const to = from + pageSize - 1;
+
+  const { data, error, count } = await query
+    .order("nome", { ascending: true })
+    .range(from, to);
+
+  if (error) {
+    console.error("[v0] Error fetching paginated products:", error);
+    throw error;
+  }
+
+  return {
+    data: data as DatabaseProduct[],
+    count: count || 0,
+    page,
+    pageSize,
+    totalPages: Math.ceil((count || 0) / pageSize),
+  };
+}
+
+/**
+ * Busca valores distintos de marcas dos produtos
+ */
+export async function getDistinctMarcas(): Promise<string[]> {
+  const supabase = createClient();
+  
+  const { data, error } = await supabase
+    .from("products")
+    .select("marca")
+    .order("marca", { ascending: true });
+
+  if (error) {
+    console.error("[v0] Error fetching distinct marcas:", error);
+    return [];
+  }
+
+  // Extrair valores únicos
+  const uniqueMarcas = Array.from(new Set(data?.map((p) => p.marca) || []));
+  return uniqueMarcas.filter(Boolean).sort();
+}
+
+/**
+ * Busca valores distintos de tipos dos produtos
+ */
+export async function getDistinctTipos(): Promise<string[]> {
+  const supabase = createClient();
+  
+  const { data, error } = await supabase
+    .from("products")
+    .select("tipo")
+    .order("tipo", { ascending: true });
+
+  if (error) {
+    console.error("[v0] Error fetching distinct tipos:", error);
+    return [];
+  }
+
+  // Extrair valores únicos
+  const uniqueTipos = Array.from(new Set(data?.map((p) => p.tipo) || []));
+  return uniqueTipos.filter(Boolean).sort();
+}
+
+/**
+ * Busca valores distintos de categorias dos produtos
+ */
+export async function getDistinctCategorias(): Promise<string[]> {
+  const supabase = createClient();
+  
+  const { data, error } = await supabase
+    .from("products")
+    .select("categoria")
+    .order("categoria", { ascending: true });
+
+  if (error) {
+    console.error("[v0] Error fetching distinct categorias:", error);
+    return [];
+  }
+
+  // Extrair valores únicos
+  const uniqueCategorias = Array.from(new Set(data?.map((p) => p.categoria) || []));
+  return uniqueCategorias.filter(Boolean).sort();
+}
+
+
 export async function createProduct(
   product: Omit<DatabaseProduct, "id" | "created_at">
 ) {
@@ -149,6 +281,37 @@ export async function isProductUsedInOrders(
 
   return orderItems && orderItems.length > 0;
 }
+
+/**
+ * Otimização: Busca todos os IDs de produtos usados em pedidos em uma única query
+ * Retorna um Map com productId -> boolean (true se usado)
+ */
+export async function getProductsUsageMap(): Promise<Record<string, boolean>> {
+  const supabase = createClient();
+
+  const { data: orderItems, error } = await supabase
+    .from("order_items")
+    .select("produto_id");
+
+  if (error) {
+    console.error("[v0] Error fetching products usage map:", error);
+    return {};
+  }
+
+  // Criar um Set com IDs únicos de produtos usados
+  const usedProductIds = new Set(
+    orderItems?.map((item) => item.produto_id) || []
+  );
+
+  // Converter para Record<string, boolean>
+  const usageMap: Record<string, boolean> = {};
+  usedProductIds.forEach((id) => {
+    usageMap[id] = true;
+  });
+
+  return usageMap;
+}
+
 
 export async function deleteProduct(id: string) {
   const supabase = createClient();

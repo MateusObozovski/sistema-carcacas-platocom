@@ -58,7 +58,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { isAuthError } from "@/lib/utils";
 import { useRouter } from "next/navigation";
-import { PRODUCT_MARCAS } from "@/lib/types";
+import { ProductSelectorModal } from "@/components/product-selector-modal";
 
 interface EntryItem {
   produtoId: string;
@@ -95,12 +95,9 @@ export default function EntradaMercadoriaPage() {
   const [relatorioBuscaNota, setRelatorioBuscaNota] = useState("");
   const [relatorioBuscaRelatorio, setRelatorioBuscaRelatorio] = useState("");
 
-  // Filtros para seleção de produtos
-  const [produtoFiltroMarca, setProdutoFiltroMarca] = useState<string>("all");
-  const [produtoFiltroTipo, setProdutoFiltroTipo] = useState<string>("all");
-  const [produtoFiltroCategoria, setProdutoFiltroCategoria] =
-    useState<string>("all");
-  const [produtoBusca, setProdutoBusca] = useState<string>("");
+  // Product selector modal state
+  const [isProductModalOpen, setIsProductModalOpen] = useState(false);
+  const [currentEditingItemIndex, setCurrentEditingItemIndex] = useState<number | null>(null);
 
   const [optionalInvoiceNumber, setOptionalInvoiceNumber] = useState("");
 
@@ -270,59 +267,42 @@ export default function EntradaMercadoriaPage() {
     setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
-  // Função para obter produtos filtrados, excluindo os já adicionados (exceto o item atual)
-  const getProdutosFiltrados = (excludeProdutoId?: string) => {
-    const produtosJaAdicionados = formData.items
-      .map((item) => item.produtoId)
-      .filter((id) => id !== "" && id !== excludeProdutoId); // Excluir todos exceto o item atual
-
-    return produtos.filter((p) => {
-      if (!p.ativo) return false;
-
-      // Excluir produtos já adicionados (exceto o item atual sendo editado)
-      if (produtosJaAdicionados.includes(p.id)) return false;
-
-      // Filtro por marca
-      if (produtoFiltroMarca !== "all" && p.marca !== produtoFiltroMarca)
-        return false;
-
-      // Filtro por tipo
-      if (produtoFiltroTipo !== "all" && p.tipo !== produtoFiltroTipo)
-        return false;
-
-      // Filtro por categoria
-      if (
-        produtoFiltroCategoria !== "all" &&
-        p.categoria !== produtoFiltroCategoria
-      )
-        return false;
-
-      // Busca por nome, código de fábrica ou código Sachs
-      if (produtoBusca.trim() !== "") {
-        const buscaLower = produtoBusca.toLowerCase();
-        const matchNome = p.nome.toLowerCase().includes(buscaLower);
-        const matchCodigoFabrica =
-          p.codigo_fabricante?.toLowerCase().includes(buscaLower) || false;
-        const matchCodigoSachs =
-          (p as any).codigo_sachs?.toLowerCase().includes(buscaLower) || false;
-
-        if (!matchNome && !matchCodigoFabrica && !matchCodigoSachs)
-          return false;
-      }
-
-      return true;
-    });
+  // Handler for opening product selector modal
+  const handleOpenProductSelector = (itemIndex: number) => {
+    setCurrentEditingItemIndex(itemIndex);
+    setIsProductModalOpen(true);
   };
 
-  // Obter valores únicos para os filtros
-  // Usar lista fixa de marcas
-  const marcasUnicas = PRODUCT_MARCAS;
-  const tiposUnicos = Array.from(
-    new Set(produtos.filter((p) => p.ativo).map((p) => p.tipo))
-  ).sort();
-  const categoriasUnicas = Array.from(
-    new Set(produtos.filter((p) => p.ativo).map((p) => p.categoria))
-  ).sort();
+  // Handler for selecting a product from the modal
+  const handleSelectProduct = (product: DatabaseProduct) => {
+    if (currentEditingItemIndex === null) return;
+
+    // Check if product is already in the list
+    const productExists = formData.items.some(
+      (item, idx) => idx !== currentEditingItemIndex && item.produtoId === product.id
+    );
+
+    if (productExists) {
+      toast({
+        title: "Erro",
+        description: "Este produto já foi adicionado. Cada item só pode aparecer uma vez.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Update the item with selected product
+    const newItems = [...formData.items];
+    newItems[currentEditingItemIndex] = {
+      produtoId: product.id,
+      produtoNome: product.nome,
+      quantidade: newItems[currentEditingItemIndex]?.quantidade || 1,
+    };
+    
+    setFormData({ ...formData, items: newItems });
+    setIsProductModalOpen(false);
+    setCurrentEditingItemIndex(null);
+  };
 
   const handleItemChange = (
     index: number,
@@ -494,11 +474,6 @@ export default function EntradaMercadoriaPage() {
       //   setFormData(prev => ({ ...prev, numero_nota_fiscal: numero }));
       // });
 
-      // Reset filtros de produtos
-      setProdutoFiltroMarca("all");
-      setProdutoFiltroTipo("all");
-      setProdutoFiltroCategoria("all");
-      setProdutoBusca("");
       setShowAddForm(false);
 
       // Recarregar lista
@@ -1127,109 +1102,6 @@ export default function EntradaMercadoriaPage() {
                     </Button>
                   </div>
 
-                  {/* Filtros para seleção de produtos */}
-                  {formData.items.length > 0 && (
-                    <Card className="p-4 bg-muted/50">
-                      <div className="space-y-3">
-                        <Label className="text-sm font-semibold">
-                          Filtros para Seleção de Produtos
-                        </Label>
-                        <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="produto-busca" className="text-xs">
-                              Buscar
-                            </Label>
-                            <div className="relative">
-                              <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                              <Input
-                                id="produto-busca"
-                                placeholder="Nome ou código..."
-                                value={produtoBusca}
-                                onChange={(e) =>
-                                  setProdutoBusca(e.target.value)
-                                }
-                                className="pl-8 h-9"
-                              />
-                            </div>
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="produto-marca" className="text-xs">
-                              Marca
-                            </Label>
-                            <Select
-                              value={produtoFiltroMarca}
-                              onValueChange={setProdutoFiltroMarca}
-                            >
-                              <SelectTrigger id="produto-marca" className="h-9">
-                                <SelectValue placeholder="Todas" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="all">Todas</SelectItem>
-                                {PRODUCT_MARCAS.map((marca) => (
-                                  <SelectItem key={marca} value={marca}>
-                                    {marca}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="produto-tipo" className="text-xs">
-                              Tipo
-                            </Label>
-                            <Select
-                              value={produtoFiltroTipo}
-                              onValueChange={setProdutoFiltroTipo}
-                            >
-                              <SelectTrigger id="produto-tipo" className="h-9">
-                                <SelectValue placeholder="Todos" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="all">Todos</SelectItem>
-                                {tiposUnicos.map((tipo) => (
-                                  <SelectItem key={tipo} value={tipo}>
-                                    {tipo}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="space-y-2">
-                            <Label
-                              htmlFor="produto-categoria"
-                              className="text-xs"
-                            >
-                              Categoria
-                            </Label>
-                            <Select
-                              value={produtoFiltroCategoria}
-                              onValueChange={setProdutoFiltroCategoria}
-                            >
-                              <SelectTrigger
-                                id="produto-categoria"
-                                className="h-9"
-                              >
-                                <SelectValue placeholder="Todas" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="all">Todas</SelectItem>
-                                {categoriasUnicas.map((categoria) => (
-                                  <SelectItem key={categoria} value={categoria}>
-                                    {categoria}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {getProdutosFiltrados().length} produto(s)
-                          disponível(is) com os filtros aplicados
-                        </div>
-                      </div>
-                    </Card>
-                  )}
-
                   {formData.items.length === 0 ? (
                     <div className="py-4 text-center text-sm text-muted-foreground">
                       Nenhum item adicionado. Clique em "Adicionar Item" para
@@ -1237,64 +1109,34 @@ export default function EntradaMercadoriaPage() {
                     </div>
                   ) : (
                     <div className="space-y-2">
+                       {/* Product Selector Modal */}
+                      <ProductSelectorModal
+                        open={isProductModalOpen}
+                        onOpenChange={setIsProductModalOpen}
+                        products={produtos}
+                        onSelectProduct={handleSelectProduct}
+                      />
+                      
                       {formData.items.map((item, index) => (
                         <Card key={index} className="p-4">
                           <div className="grid grid-cols-1 gap-4 md:grid-cols-8">
                             <div className="md:col-span-5">
                               <Label>Produto *</Label>
-                              <Select
-                                value={item.produtoId}
-                                onValueChange={(value) =>
-                                  handleItemChange(index, "produtoId", value)
-                                }
-                                disabled={isSubmitting}
-                              >
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Selecione um produto" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {(() => {
-                                    const produtosDisponiveis =
-                                      getProdutosFiltrados(item.produtoId);
-                                    // Sempre incluir o produto atual se já estiver selecionado
-                                    const produtoAtual = item.produtoId
-                                      ? produtos.find(
-                                          (p) => p.id === item.produtoId
-                                        )
-                                      : null;
-
-                                    const produtosParaExibir =
-                                      produtoAtual &&
-                                      !produtosDisponiveis.find(
-                                        (p) => p.id === produtoAtual.id
-                                      )
-                                        ? [produtoAtual, ...produtosDisponiveis]
-                                        : produtosDisponiveis;
-
-                                    if (produtosParaExibir.length === 0) {
-                                      return (
-                                        <SelectItem value="none" disabled>
-                                          Nenhum produto encontrado com os
-                                          filtros aplicados
-                                        </SelectItem>
-                                      );
-                                    }
-
-                                    return produtosParaExibir.map((produto) => (
-                                      <SelectItem
-                                        key={produto.id}
-                                        value={produto.id}
-                                      >
-                                        {produto.nome}
-                                        {produto.codigo_fabricante &&
-                                          ` (${produto.codigo_fabricante})`}
-                                        {(produto as any).codigo_sachs &&
-                                          ` - ${(produto as any).codigo_sachs}`}
-                                      </SelectItem>
-                                    ));
-                                  })()}
-                                </SelectContent>
-                              </Select>
+                              <div className="flex gap-2">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  role="combobox"
+                                  className={`w-full justify-between ${
+                                    !item.produtoId ? "text-muted-foreground" : ""
+                                  }`}
+                                  onClick={() => handleOpenProductSelector(index)}
+                                  disabled={isSubmitting}
+                                >
+                                  {item.produtoNome || "Selecione um produto"}
+                                  <Search className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                </Button>
+                              </div>
                             </div>
                             <div className="md:col-span-2">
                               <Label>Quantidade *</Label>
