@@ -40,12 +40,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { PendingCarcassesPanel } from "@/components/pending-carcasses-panel";
+import { ProductSelectorModal } from "@/components/product-selector-modal";
 import {
   createMerchandiseEntry,
   getMerchandiseEntries,
   getMerchandiseEntriesWithLinks,
   getClients,
   getProducts,
+  getPendingCarcacasByCliente,
   generateRelatorioEntradaNumber,
   type DatabaseMerchandiseEntry,
   type DatabaseProduct,
@@ -58,7 +61,6 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { isAuthError } from "@/lib/utils";
 import { useRouter } from "next/navigation";
-import { ProductSelectorModal } from "@/components/product-selector-modal";
 
 interface EntryItem {
   produtoId: string;
@@ -70,6 +72,7 @@ export default function EntradaMercadoriaPage() {
   const { user } = useAuth();
   const { toast } = useToast();
   const router = useRouter();
+  
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFiltro, setStatusFiltro] = useState<
     "todos" | "Pendente" | "Concluída"
@@ -88,7 +91,6 @@ export default function EntradaMercadoriaPage() {
     "todos" | "Pendente" | "Concluída"
   >("todos");
   
-  
   // Novos filtros para Relatórios
   const [relatorioDataInicio, setRelatorioDataInicio] = useState("");
   const [relatorioDataFim, setRelatorioDataFim] = useState("");
@@ -106,6 +108,70 @@ export default function EntradaMercadoriaPage() {
     numero_nota_fiscal: "", // Will store the Report Number
     items: [] as EntryItem[],
   });
+
+  // Pending Carcasses State
+  const [isSidePanelOpen, setIsSidePanelOpen] = useState(false);
+  const [pendingItems, setPendingItems] = useState<any[]>([]);
+  const [isSidePanelLoading, setIsSidePanelLoading] = useState(false);
+
+  // Handlers for Pending Carcasses
+  const handleClientChange = async (clientId: string) => {
+    setFormData({ ...formData, cliente_id: clientId });
+    
+    // Reset pending items when client changes
+    setPendingItems([]);
+    
+    if (clientId) {
+      setIsSidePanelLoading(true);
+      try {
+        const pendencias = await getPendingCarcacasByCliente(clientId);
+        if (pendencias && pendencias.length > 0) {
+          // Map to correct interface
+          const mappedPendencias = pendencias.map((item: any) => ({
+            id: item.id,
+            produto_id: item.produto_id,
+            produto_nome: item.produto_nome,
+            quantidade_pendente: item.debito_carcaca,
+            preco_unitario: item.preco_unitario,
+            pedido_origem: item.orders?.numero_pedido,
+            pedido_id: item.orders?.id,
+            data_venda: item.orders?.data_venda,
+          }));
+          
+          setPendingItems(mappedPendencias);
+          setIsSidePanelOpen(true); // Open automatically if has pending items
+          
+          toast({
+            title: "Pendências Encontradas",
+            description: `Este cliente possui ${pendencias.length} itens pendentes de devolução.`,
+          });
+        }
+      } catch (error) {
+        console.error("Error fetching pending items:", error);
+      } finally {
+        setIsSidePanelLoading(false);
+      }
+    }
+  };
+
+  const handleSelectPendingItem = (item: any) => {
+    setFormData(prev => ({
+      ...prev,
+      items: [
+        ...prev.items,
+        {
+          produtoId: item.produto_id,
+          produtoNome: item.produto_nome,
+          quantidade: item.quantidade_pendente || 1,
+        }
+      ]
+    }));
+
+    toast({
+      title: "Item Adicionado",
+      description: `${item.produto_nome} adicionado com sucesso.`,
+    });
+  };
 
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isUploading, setIsUploading] = useState(false);
@@ -236,17 +302,7 @@ export default function EntradaMercadoriaPage() {
   };
 
   const handleAddItem = () => {
-    setFormData({
-      ...formData,
-      items: [
-        ...formData.items,
-        {
-          produtoId: "",
-          produtoNome: "",
-          quantidade: 1,
-        },
-      ],
-    });
+    setIsSidePanelOpen(true);
   };
 
   const handleRemoveItem = (index: number) => {
@@ -588,15 +644,22 @@ export default function EntradaMercadoriaPage() {
 
   return (
     <ProtectedRoute>
+      <PendingCarcassesPanel
+        isOpen={isSidePanelOpen}
+        onClose={() => setIsSidePanelOpen(false)}
+        pendingItems={pendingItems}
+        onSelectItem={handleSelectPendingItem}
+        clientName={clientes.find((c) => c.id === formData.cliente_id)?.nome}
+      />
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-3xl font-bold">Entrada de Mercadoria</h1>
             <p className="text-muted-foreground">
               Registre as entradas de mercadoria recebidas
             </p>
           </div>
-          <Button onClick={() => setShowAddForm(true)}>
+          <Button onClick={() => setShowAddForm(true)} className="w-full sm:w-auto">
             <Plus className="mr-2 h-4 w-4" />
             Nova Entrada
           </Button>
@@ -663,55 +726,57 @@ export default function EntradaMercadoriaPage() {
                     Nenhuma entrada encontrada
                   </div>
                 ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Relatório de Entrada</TableHead>
-                        <TableHead>Cliente</TableHead>
-                        <TableHead>Data da Nota</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Data de Registro</TableHead>
-                        <TableHead className="text-right">Ações</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {entradasFiltradas.map((entrada) => (
-                        <TableRow key={entrada.id}>
-                          <TableCell className="font-medium">
-                            {entrada.numero_nota_fiscal}
-                          </TableCell>
-                          <TableCell>
-                            {entrada.clients?.nome || "N/A"}
-                          </TableCell>
-                          <TableCell>{formatDate(entrada.data_nota)}</TableCell>
-                          <TableCell>
-                            <Badge
-                              variant={
-                                entrada.status === "Concluída"
-                                  ? "default"
-                                  : "secondary"
-                              }
-                            >
-                              {entrada.status}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            {formatDate(entrada.created_at)}
-                          </TableCell>
-                          <TableCell className="text-right">
-                             <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleViewDocuments(entrada.id)}
-                                title="Ver Anexos"
-                             >
-                                <FileText className="h-4 w-4" />
-                             </Button>
-                          </TableCell>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Relatório de Entrada</TableHead>
+                          <TableHead>Cliente</TableHead>
+                          <TableHead>Data da Nota</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Data de Registro</TableHead>
+                          <TableHead className="text-right">Ações</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {entradasFiltradas.map((entrada) => (
+                          <TableRow key={entrada.id}>
+                            <TableCell className="font-medium">
+                              {entrada.numero_nota_fiscal}
+                            </TableCell>
+                            <TableCell>
+                              {entrada.clients?.nome || "N/A"}
+                            </TableCell>
+                            <TableCell>{formatDate(entrada.data_nota)}</TableCell>
+                            <TableCell>
+                              <Badge
+                                variant={
+                                  entrada.status === "Concluída"
+                                    ? "default"
+                                    : "secondary"
+                                }
+                              >
+                                {entrada.status}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              {formatDate(entrada.created_at)}
+                            </TableCell>
+                            <TableCell className="text-right">
+                               <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleViewDocuments(entrada.id)}
+                                  title="Ver Anexos"
+                               >
+                                  <FileText className="h-4 w-4" />
+                               </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
                 )}
               </CardContent>
             </Card>
@@ -901,62 +966,64 @@ export default function EntradaMercadoriaPage() {
                             </Button>
                           </div>
                         </div>
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead>Produto</TableHead>
-                              <TableHead>Quantidade</TableHead>
-                              <TableHead>Status Vínculo</TableHead>
-                              <TableHead>Pedido Vinculado</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {entrada.merchandise_entry_items?.map(
-                              (item: any) => (
-                                <TableRow key={item.id}>
-                                  <TableCell className="font-medium">
-                                    {item.produto_nome}
-                                  </TableCell>
-                                  <TableCell>{item.quantidade}</TableCell>
-                                  <TableCell>
-                                    {item.vinculado ? (
-                                      <Badge variant="default">
-                                        <CheckCircle className="mr-1 h-3 w-3" />
-                                        Vinculado
-                                      </Badge>
-                                    ) : (
-                                      <Badge variant="secondary">
-                                        Pendente
-                                      </Badge>
-                                    )}
-                                  </TableCell>
-                                  <TableCell>
-                                    {item.vinculado && item.order_items ? (
-                                      <div className="text-sm">
-                                        <div className="font-medium">
-                                          {item.order_items.orders
-                                            ?.numero_pedido || "N/A"}
+                        <div className="overflow-x-auto">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Produto</TableHead>
+                                <TableHead>Qtd</TableHead>
+                                <TableHead>Status Vínculo</TableHead>
+                                <TableHead>Pedido Vinculado</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {entrada.merchandise_entry_items?.map(
+                                (item: any) => (
+                                  <TableRow key={item.id}>
+                                    <TableCell className="font-medium">
+                                      {item.produto_nome}
+                                    </TableCell>
+                                    <TableCell>{item.quantidade}</TableCell>
+                                    <TableCell>
+                                      {item.vinculado ? (
+                                        <Badge variant="default">
+                                          <CheckCircle className="mr-1 h-3 w-3" />
+                                          Vinculado
+                                        </Badge>
+                                      ) : (
+                                        <Badge variant="secondary">
+                                          Pendente
+                                        </Badge>
+                                      )}
+                                    </TableCell>
+                                    <TableCell>
+                                      {item.vinculado && item.order_items ? (
+                                        <div className="text-sm">
+                                          <div className="font-medium">
+                                            {item.order_items.orders
+                                              ?.numero_pedido || "N/A"}
+                                          </div>
+                                          <div className="text-muted-foreground">
+                                            {item.order_items.orders?.data_venda
+                                              ? formatDate(
+                                                  item.order_items.orders
+                                                    .data_venda
+                                                )
+                                              : "-"}
+                                          </div>
                                         </div>
-                                        <div className="text-muted-foreground">
-                                          {item.order_items.orders?.data_venda
-                                            ? formatDate(
-                                                item.order_items.orders
-                                                  .data_venda
-                                              )
-                                            : "-"}
-                                        </div>
-                                      </div>
-                                    ) : (
-                                      <span className="text-sm text-muted-foreground">
-                                        -
-                                      </span>
-                                    )}
-                                  </TableCell>
-                                </TableRow>
-                              )
-                            )}
-                          </TableBody>
-                        </Table>
+                                      ) : (
+                                        <span className="text-sm text-muted-foreground">
+                                          -
+                                        </span>
+                                      )}
+                                    </TableCell>
+                                  </TableRow>
+                                )
+                              )}
+                            </TableBody>
+                          </Table>
+                        </div>
                       </Card>
                     ))}
                   </div>
@@ -1002,9 +1069,7 @@ export default function EntradaMercadoriaPage() {
                     <Label htmlFor="cliente">Cliente *</Label>
                     <Select
                       value={formData.cliente_id}
-                      onValueChange={(value) =>
-                        setFormData({ ...formData, cliente_id: value })
-                      }
+                      onValueChange={handleClientChange}
                       disabled={isSubmitting}
                     >
                       <SelectTrigger id="cliente">
@@ -1119,31 +1184,32 @@ export default function EntradaMercadoriaPage() {
                       
                       {formData.items.map((item, index) => (
                         <Card key={index} className="p-4">
-                          <div className="grid grid-cols-1 gap-4 md:grid-cols-8">
-                            <div className="md:col-span-5">
+                          <div className="grid grid-cols-4 gap-4 md:grid-cols-8">
+                            <div className="col-span-4 md:col-span-5">
                               <Label>Produto *</Label>
                               <div className="flex gap-2">
                                 <Button
                                   type="button"
                                   variant="outline"
                                   role="combobox"
-                                  className={`w-full justify-between ${
+                                  className={`w-full justify-between h-9 ${
                                     !item.produtoId ? "text-muted-foreground" : ""
                                   }`}
                                   onClick={() => handleOpenProductSelector(index)}
                                   disabled={isSubmitting}
                                 >
-                                  {item.produtoNome || "Selecione um produto"}
+                                  <span className="truncate">{item.produtoNome || "Selecione um produto"}</span>
                                   <Search className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                 </Button>
                               </div>
                             </div>
-                            <div className="md:col-span-2">
-                              <Label>Quantidade *</Label>
+                            <div className="col-span-3 md:col-span-2">
+                              <Label>Qtd *</Label>
                               <Input
                                 type="number"
                                 min="1"
-                                value={item.quantidade}
+                                className="h-9"
+                                value={item.quantidade ?? ""}
                                 onChange={(e) =>
                                   handleItemChange(
                                     index,
@@ -1155,11 +1221,12 @@ export default function EntradaMercadoriaPage() {
                                 required
                               />
                             </div>
-                            <div className="md:col-span-1 flex items-end">
+                            <div className="col-span-1 md:col-span-1 flex items-end justify-end md:justify-start">
                               <Button
                                 type="button"
                                 variant="destructive"
                                 size="icon"
+                                className="h-9 w-9"
                                 onClick={() => handleRemoveItem(index)}
                                 disabled={isSubmitting}
                               >

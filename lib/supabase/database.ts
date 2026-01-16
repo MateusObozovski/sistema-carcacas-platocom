@@ -11,6 +11,7 @@ export interface DatabaseProduct {
   codigo?: string;
   codigo_fabricante?: string;
   observacoes?: string;
+  sigla_marca?: string;
   preco_base: number;
   desconto_maximo_bt: number; // Manter para compatibilidade, mas será calculado dinamicamente
   carcass_value: number; // Valor fixo da carcaça em reais
@@ -1134,7 +1135,9 @@ export async function getPendingCarcacasByCliente(clienteId: string) {
         id,
         numero_pedido,
         cliente_id,
-        status
+        status,
+        data_venda
+      )
       )
     `
     )

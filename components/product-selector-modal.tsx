@@ -18,15 +18,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
+
 import { Search, Package, ChevronLeft, ChevronRight, Info } from "lucide-react";
 import type { DatabaseProduct } from "@/lib/supabase/database";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+
 
 interface ProductSelectorModalProps {
   open: boolean;
@@ -50,6 +45,10 @@ export function ProductSelectorModal({
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 50;
+
+  // Application details modal state
+  const [applicationModalOpen, setApplicationModalOpen] = useState(false);
+  const [selectedApplication, setSelectedApplication] = useState<{title: string, content: string} | null>(null);
 
   // Debounce search text para evitar filtragem excessiva
   useEffect(() => {
@@ -96,7 +95,8 @@ export function ProductSelectorModal({
         product.codigo_fabricante,
         product.aplicacao,
         product.tipo,
-        product.categoria
+        product.categoria,
+        product.sigla_marca
       ]
       .filter(Boolean)
       .join(" ")
@@ -142,6 +142,12 @@ export function ProductSelectorModal({
     setCurrentPage(1);
   };
 
+  const handleOpenApplication = (e: React.MouseEvent, productName: string, application: string) => {
+    e.stopPropagation(); // Prevent card click
+    setSelectedApplication({ title: productName, content: application });
+    setApplicationModalOpen(true);
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
@@ -156,30 +162,30 @@ export function ProductSelectorModal({
         <div className="space-y-3 pb-2">
           {/* Linha 1: busca principal */}
           <div className="space-y-1.5">
-            <Label htmlFor="search" className="text-sm font-medium">
+            <Label htmlFor="search" className="text-sm font-medium hidden sm:block">
               Buscar produto (nome, marca, cód. fab. ou aplicação)
             </Label>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 id="search"
-                placeholder="Pesquise por nome, marca, código, fabricante ou aplicação"
+                placeholder="Buscar (nome, marca, código...)"
                 value={searchText}
                 onChange={(e) => setSearchText(e.target.value)}
-                className="pl-9"
+                className="pl-9 h-10"
               />
             </div>
           </div>
 
           {/* Linha 2: filtros compactos */}
-          <div className="grid gap-3 md:grid-cols-3">
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium text-muted-foreground">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+            <div className="space-y-1">
+              <Label className="text-[10px] sm:text-xs font-medium text-muted-foreground uppercase tracking-wide">
                 Marca
               </Label>
               <Select value={filterMarca} onValueChange={setFilterMarca}>
-                <SelectTrigger className="h-9 text-sm">
-                  <SelectValue placeholder="Todas as marcas" />
+                <SelectTrigger className="h-9 text-xs sm:text-sm">
+                  <SelectValue placeholder="Todas" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todas</SelectItem>
@@ -192,13 +198,13 @@ export function ProductSelectorModal({
               </Select>
             </div>
 
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium text-muted-foreground">
+            <div className="space-y-1">
+              <Label className="text-[10px] sm:text-xs font-medium text-muted-foreground uppercase tracking-wide">
                 Tipo
               </Label>
               <Select value={filterTipo} onValueChange={setFilterTipo}>
-                <SelectTrigger className="h-9 text-sm">
-                  <SelectValue placeholder="Todos os tipos" />
+                <SelectTrigger className="h-9 text-xs sm:text-sm">
+                  <SelectValue placeholder="Todos" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos</SelectItem>
@@ -211,16 +217,16 @@ export function ProductSelectorModal({
               </Select>
             </div>
 
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium text-muted-foreground">
+            <div className="space-y-1 col-span-2 md:col-span-1">
+              <Label className="text-[10px] sm:text-xs font-medium text-muted-foreground uppercase tracking-wide">
                 Categoria
               </Label>
               <Select
                 value={filterCategoria}
                 onValueChange={setFilterCategoria}
               >
-                <SelectTrigger className="h-9 text-sm">
-                  <SelectValue placeholder="Todas as categorias" />
+                <SelectTrigger className="h-9 text-xs sm:text-sm">
+                  <SelectValue placeholder="Todas" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todas</SelectItem>
@@ -236,7 +242,7 @@ export function ProductSelectorModal({
         </div>
 
         {/* Grid de Produtos */}
-        <div className="flex-1 min-h-0 overflow-y-auto -mx-6 px-6">
+        <div className="h-[60vh] overflow-y-auto -mx-6 px-6 border-t border-b">
           <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3 p-1">
             {paginatedProducts.length === 0 ? (
               <div className="col-span-full text-center py-8 text-muted-foreground">
@@ -256,18 +262,15 @@ export function ProductSelectorModal({
                           {product.nome}
                         </h4>
                         {product.aplicacao && (
-                          <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Info className="h-4 w-4 text-muted-foreground/70 hover:text-accent-foreground cursor-help" />
-                                </TooltipTrigger>
-                                <TooltipContent className="max-w-[300px] text-sm">
-                                  <p className="font-semibold mb-1">Aplicação:</p>
-                                  <p>{product.aplicacao}</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
+                          <div className="shrink-0">
+                             <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 text-muted-foreground/70 hover:text-accent-foreground"
+                              onClick={(e) => handleOpenApplication(e, product.nome, product.aplicacao!)}
+                             >
+                              <Info className="h-4 w-4" />
+                            </Button>
                           </div>
                         )}
                       </div>
@@ -341,6 +344,35 @@ export function ProductSelectorModal({
              </Button>
            </div>
         </div>
+
+        {/* Application Details Modal */}
+        <Dialog open={applicationModalOpen} onOpenChange={setApplicationModalOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Detalhes da Aplicação</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 pt-2">
+              <div>
+                <h4 className="font-semibold text-sm text-muted-foreground mb-1">Produto</h4>
+                <p className="font-medium leading-tight">{selectedApplication?.title}</p>
+              </div>
+              <div className="bg-muted/50 p-4 rounded-md border">
+                <h4 className="font-semibold text-sm text-foreground mb-2 flex items-center gap-2">
+                  <Info className="h-4 w-4" />
+                  Aplicação / Compatibilidade
+                </h4>
+                <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                  {selectedApplication?.content}
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end pt-2">
+               <Button onClick={() => setApplicationModalOpen(false)}>
+                 Fechar
+               </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </DialogContent>
     </Dialog>
   );

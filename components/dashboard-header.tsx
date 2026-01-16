@@ -68,7 +68,7 @@ export function DashboardHeader({ onMenuClick }: DashboardHeaderProps) {
             />
           </div>
           <div className="flex-1">
-            <h1 className="text-lg lg:text-xl font-semibold text-white">Sistema de Carcaças</h1>
+            <h1 className="hidden sm:block text-lg lg:text-xl font-semibold text-white">Sistema de Carcaças</h1>
             <p className="hidden sm:block text-sm text-white/80">Controle de débitos e devoluções</p>
           </div>
         </div>
