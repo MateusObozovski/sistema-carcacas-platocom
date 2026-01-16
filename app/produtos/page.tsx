@@ -72,6 +72,8 @@ export default function ProdutosPage() {
   const [products, setProducts] = useState<DatabaseProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [filterMarca, setFilterMarca] = useState<string>("all");
   const [filterTipo, setFilterTipo] = useState<string>("all");
   const [filterCategoria, setFilterCategoria] = useState<string>("all");
@@ -109,13 +111,24 @@ export default function ProdutosPage() {
     ativo: true,
   });
 
-  const loadProducts = async (page: number = currentPage) => {
+  // Debounce search term
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  const loadProducts = async (page: number = currentPage, showFullLoader = false) => {
     try {
-      setLoading(true);
+      if (showFullLoader) {
+        setLoading(true);
+      }
       
       // Preparar filtros
       const filters: ProductFilters = {
-        searchTerm: searchTerm || undefined,
+        searchTerm: debouncedSearchTerm || undefined,
         marca: filterMarca !== "all" ? filterMarca : undefined,
         tipo: filterTipo !== "all" ? filterTipo : undefined,
         categoria: filterCategoria !== "all" ? filterCategoria : undefined,
@@ -168,18 +181,19 @@ export default function ProdutosPage() {
       setTotalCount(0);
     } finally {
       setLoading(false);
+      setIsInitialLoading(false);
     }
   };
 
   // Reload products when filters change (reset to page 1)
   useEffect(() => {
     setCurrentPage(1);
-    loadProducts(1);
-  }, [searchTerm, filterMarca, filterTipo, filterCategoria]);
+    loadProducts(1, false);
+  }, [debouncedSearchTerm, filterMarca, filterTipo, filterCategoria]);
 
   // Initial load
   useEffect(() => {
-    loadProducts();
+    loadProducts(1, true);
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -386,25 +400,25 @@ export default function ProdutosPage() {
   };
 
   const getCategoryLabel = (categoria: string) => {
-    const labels: Record<string, string> = {
-      kit: "Kit",
-      plato: "Platô",
-      mancal: "Mancal",
-      disco: "Disco",
-      outros: "Outros",
+      const labels: Record<string, string> = {
+        kit: "Kit",
+        plato: "Platô",
+        mancal: "Mancal",
+        disco: "Disco",
+        outros: "Outros",
+      };
+      return labels[categoria] || categoria;
     };
-    return labels[categoria] || categoria;
-  };
-
-  if (loading) {
-    return (
-      <ProtectedRoute
-        allowedRoles={["admin", "Gerente", "Coordenador", "Vendedor"]}
-      >
-        <div className="text-center py-8">Carregando produtos...</div>
-      </ProtectedRoute>
-    );
-  }
+  
+    if (isInitialLoading) {
+      return (
+        <ProtectedRoute
+          allowedRoles={["admin", "Gerente", "Coordenador", "Vendedor"]}
+        >
+          <div className="text-center py-8">Carregando produtos...</div>
+        </ProtectedRoute>
+      );
+    }
 
   return (
     <ProtectedRoute

@@ -91,12 +91,12 @@ export async function updateSession(request: NextRequest) {
   // Content Security Policy
   const csp = [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://vercel.live",
+    "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://vercel.live https://va.vercel-scripts.com",
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: https:",
     "font-src 'self' data:",
     "object-src 'self' data:",
-    "connect-src 'self' https://*.supabase.co https://*.supabase.in",
+    "connect-src 'self' https://*.supabase.co https://*.supabase.in https://vercel.live https://va.vercel-scripts.com",
     "frame-ancestors 'none'",
     "base-uri 'self'",
     "form-action 'self'",

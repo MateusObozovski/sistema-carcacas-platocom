@@ -19,8 +19,14 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Search, Package, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, Package, ChevronLeft, ChevronRight, Info } from "lucide-react";
 import type { DatabaseProduct } from "@/lib/supabase/database";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface ProductSelectorModalProps {
   open: boolean;
@@ -76,18 +82,28 @@ export function ProductSelectorModal({
   );
 
   const filteredProducts = useMemo(() => {
-    const search = debouncedSearchText.trim().toLowerCase();
+    const searchInput = debouncedSearchText.trim().toLowerCase();
     
+    // Create a regex from the search input for wildcard search
+    // Escape special regex characters except '*' which we'll treat as wildcard
+    const escapeRegExp = (string: string) => {
+      return string.replace(/[.+?^${}()|[\]\\]/g, '\\$&'); // $& means the whole matched string
+    };
+
+    // If input contains *, split by it and join with .* to match anything in between
+    // Otherwise just use the input as is for standard inclusion check (or simple regex)
+    const pattern = searchInput.split('*').map(escapeRegExp).join('.*');
+    const searchRegex = new RegExp(pattern, 'i');
+
     return products.filter((product) => {
       const matchesSearch =
-        search === "" ||
-        product.nome.toLowerCase().includes(search) ||
-        product.marca.toLowerCase().includes(search) ||
-        (product.codigo && product.codigo.toLowerCase().includes(search)) ||
-        (product.codigo_fabricante &&
-          product.codigo_fabricante.toLowerCase().includes(search)) ||
-        (product.aplicacao &&
-          product.aplicacao.toLowerCase().includes(search));
+        searchInput === "" ||
+        searchRegex.test(product.nome) ||
+        searchRegex.test(product.marca) ||
+        (product.codigo && searchRegex.test(product.codigo)) ||
+        (product.codigo_fabricante && searchRegex.test(product.codigo_fabricante)) ||
+        (product.aplicacao && searchRegex.test(product.aplicacao));
+
       const matchesMarca =
         filterMarca === "all" || product.marca === filterMarca;
       const matchesTipo = filterTipo === "all" || product.tipo === filterTipo;
@@ -232,9 +248,26 @@ export function ProductSelectorModal({
                 >
                   <CardContent className="px-3 py-2.5">
                     <div className="space-y-1">
-                      <h4 className="font-semibold text-sm line-clamp-2 leading-snug">
-                        {product.nome}
-                      </h4>
+                      <div className="flex items-start justify-between gap-2">
+                        <h4 className="font-semibold text-sm line-clamp-2 leading-snug">
+                          {product.nome}
+                        </h4>
+                        {product.aplicacao && (
+                          <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Info className="h-4 w-4 text-muted-foreground/70 hover:text-accent-foreground cursor-help" />
+                                </TooltipTrigger>
+                                <TooltipContent className="max-w-[300px] text-sm">
+                                  <p className="font-semibold mb-1">Aplicação:</p>
+                                  <p>{product.aplicacao}</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          </div>
+                        )}
+                      </div>
 
                       {/* Códigos */}
                       <div className="flex flex-wrap gap-1 text-[11px] text-muted-foreground">

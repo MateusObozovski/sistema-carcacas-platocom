@@ -133,9 +133,9 @@ export async function getProductsPaginated(
   }
 
   if (filters?.searchTerm && filters.searchTerm.trim()) {
-    const searchLower = filters.searchTerm.toLowerCase();
+    const searchLower = filters.searchTerm.toLowerCase().replace(/\*/g, "%");
     query = query.or(
-      `nome.ilike.%${searchLower}%,marca.ilike.%${searchLower}%,codigo.ilike.%${searchLower}%,codigo_fabricante.ilike.%${searchLower}%`
+      `nome.ilike.%${searchLower}%,marca.ilike.%${searchLower}%,codigo.ilike.%${searchLower}%,codigo_fabricante.ilike.%${searchLower}%,aplicacao.ilike.%${searchLower}%`
     );
   }
 
