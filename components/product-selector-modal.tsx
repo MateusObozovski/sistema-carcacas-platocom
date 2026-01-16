@@ -84,25 +84,28 @@ export function ProductSelectorModal({
   const filteredProducts = useMemo(() => {
     const searchInput = debouncedSearchText.trim().toLowerCase();
     
-    // Create a regex from the search input for wildcard search
-    // Escape special regex characters except '*' which we'll treat as wildcard
-    const escapeRegExp = (string: string) => {
-      return string.replace(/[.+?^${}()|[\]\\]/g, '\\$&'); // $& means the whole matched string
-    };
-
-    // If input contains *, split by it and join with .* to match anything in between
-    // Otherwise just use the input as is for standard inclusion check (or simple regex)
-    const pattern = searchInput.split('*').map(escapeRegExp).join('.*');
-    const searchRegex = new RegExp(pattern, 'i');
+    // Split by * to get all required search terms
+    const searchTerms = searchInput.split('*').filter(term => term.length > 0);
 
     return products.filter((product) => {
-      const matchesSearch =
-        searchInput === "" ||
-        searchRegex.test(product.nome) ||
-        searchRegex.test(product.marca) ||
-        (product.codigo && searchRegex.test(product.codigo)) ||
-        (product.codigo_fabricante && searchRegex.test(product.codigo_fabricante)) ||
-        (product.aplicacao && searchRegex.test(product.aplicacao));
+      // Create a combined string of all searchable fields
+      const productSearchText = [
+        product.nome,
+        product.marca,
+        product.codigo,
+        product.codigo_fabricante,
+        product.aplicacao,
+        product.tipo,
+        product.categoria
+      ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+
+      // Check if ALL search terms exist in the product text (AND logic)
+      const matchesSearch = searchTerms.every(term => 
+        productSearchText.includes(term)
+      );
 
       const matchesMarca =
         filterMarca === "all" || product.marca === filterMarca;
