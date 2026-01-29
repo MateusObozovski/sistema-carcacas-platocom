@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/table";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/hooks/use-toast";
-import { Search, Plus, Trash2, Package, CheckCircle, Upload, FileText, X, Filter } from "lucide-react";
+import { Search, Plus, Trash2, Package, CheckCircle, Upload, FileText, X, Filter, Camera } from "lucide-react";
 
 import {
   Select,
@@ -66,6 +66,8 @@ interface EntryItem {
   produtoId: string;
   produtoNome: string;
   quantidade: number;
+  orderItemId?: string;  // ID do order_item para vinculação automática
+  pendingItemId?: string; // ID do item pendente (para controle de duplicatas por pedido)
 }
 
 export default function EntradaMercadoriaPage() {
@@ -163,13 +165,15 @@ export default function EntradaMercadoriaPage() {
           produtoId: item.produto_id,
           produtoNome: item.produto_nome,
           quantidade: item.quantidade_pendente || 1,
+          orderItemId: item.id, // ID do order_item para vinculação automática
+          pendingItemId: item.id, // ID único por pedido para controle de duplicatas
         }
       ]
     }));
 
     toast({
       title: "Item Adicionado",
-      description: `${item.produto_nome} adicionado com sucesso.`,
+      description: `${item.produto_nome} (Pedido #${item.orders?.numero_pedido}) adicionado com sucesso.`,
     });
   };
 
@@ -486,6 +490,7 @@ export default function EntradaMercadoriaPage() {
           produto_id: item.produtoId,
           produto_nome: item.produtoNome,
           quantidade: item.quantidade,
+          order_item_id: item.orderItemId, // Para vinculação automática
         }))
       );
 
@@ -649,8 +654,29 @@ export default function EntradaMercadoriaPage() {
         onClose={() => setIsSidePanelOpen(false)}
         pendingItems={pendingItems}
         onSelectItem={handleSelectPendingItem}
+        onSelectUnlinkedEntry={() => {
+          // Adiciona um item vazio à lista e abre o modal de seleção
+          const newIndex = formData.items.length;
+          setFormData(prev => ({
+            ...prev,
+            items: [...prev.items, { produtoId: "", produtoNome: "", quantidade: 1 }]
+          }));
+          setCurrentEditingItemIndex(newIndex);
+          setIsProductModalOpen(true);
+          setIsSidePanelOpen(false);
+        }}
+        selectedPendingItemIds={formData.items.map(item => item.pendingItemId).filter(Boolean) as string[]}
         clientName={clientes.find((c) => c.id === formData.cliente_id)?.nome}
       />
+      
+      {/* Modal de seleção de produto para entrada sem vínculo */}
+      <ProductSelectorModal
+        open={isProductModalOpen}
+        onOpenChange={setIsProductModalOpen}
+        products={produtos}
+        onSelectProduct={handleSelectProduct}
+      />
+      
       <div className="space-y-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -1112,7 +1138,7 @@ export default function EntradaMercadoriaPage() {
                   
                   <div className="space-y-2">
                     <Label htmlFor="documentos">Anexar Documentos</Label>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-col sm:flex-row gap-2">
                         <Input
                             id="documentos"
                             type="file"
@@ -1120,12 +1146,27 @@ export default function EntradaMercadoriaPage() {
                             onChange={handleFileSelect}
                             className="hidden"
                         />
+                        <Input
+                            id="camera-capture"
+                            type="file"
+                            accept="image/*"
+                            capture="environment"
+                            onChange={handleFileSelect}
+                            className="hidden"
+                        />
                         <Label
                             htmlFor="documentos"
-                            className="flex h-10 w-full cursor-pointer items-center justify-center rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background hover:bg-accent hover:text-accent-foreground"
+                            className="flex h-10 flex-1 cursor-pointer items-center justify-center rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background hover:bg-accent hover:text-accent-foreground"
                         >
                             <Upload className="mr-2 h-4 w-4" />
                             Selecionar Arquivos
+                        </Label>
+                        <Label
+                            htmlFor="camera-capture"
+                            className="flex h-10 flex-1 cursor-pointer items-center justify-center rounded-md border border-primary bg-primary/10 px-3 py-2 text-sm text-primary ring-offset-background hover:bg-primary/20"
+                        >
+                            <Camera className="mr-2 h-4 w-4" />
+                            Tirar Foto
                         </Label>
                     </div>
                     {selectedFiles.length > 0 && (

@@ -972,15 +972,14 @@ export interface MerchandiseEntryWithItems extends DatabaseMerchandiseEntry {
 
 export async function createMerchandiseEntry(
   entry: Omit<DatabaseMerchandiseEntry, "id" | "created_at" | "updated_at">,
-  items: Omit<
+  items: (Omit<
     DatabaseMerchandiseEntryItem,
     | "id"
     | "entry_id"
     | "created_at"
     | "vinculado"
-    | "order_item_id"
     | "preco_unitario"
-  >[]
+  > & { order_item_id?: string })[]
 ) {
   const supabase = createClient();
 
@@ -1004,7 +1003,8 @@ export async function createMerchandiseEntry(
 
   // Criar itens
   if (items.length > 0) {
-    const { error: itemsError } = await supabase
+    // Inserir itens com vinculação se order_item_id estiver presente
+    const { data: createdItems, error: itemsError } = await supabase
       .from("merchandise_entry_items")
       .insert(
         items.map((item) => ({
@@ -1012,9 +1012,12 @@ export async function createMerchandiseEntry(
           produto_id: item.produto_id,
           produto_nome: item.produto_nome,
           quantidade: item.quantidade,
-          // preco_unitario não é mais obrigatório
+          // Se tem order_item_id, já marca como vinculado
+          vinculado: !!item.order_item_id,
+          order_item_id: item.order_item_id || null,
         }))
-      );
+      )
+      .select();
 
     if (itemsError) {
       console.error("[v0] Error creating merchandise entry items:", itemsError);
@@ -1024,6 +1027,77 @@ export async function createMerchandiseEntry(
         .delete()
         .eq("id", entryData.id);
       throw itemsError;
+    }
+
+    // Processar vinculação automática para itens com order_item_id
+    const itemsWithOrderItemId = items.filter(item => item.order_item_id);
+    
+    for (const item of itemsWithOrderItemId) {
+      try {
+        // Buscar o order_item atual para reduzir o débito
+        const { data: orderItem, error: orderItemError } = await supabase
+          .from("order_items")
+          .select("*, order_id")
+          .eq("id", item.order_item_id)
+          .single();
+
+        if (orderItemError || !orderItem) {
+          console.error(`[v0] Error fetching order_item ${item.order_item_id}:`, orderItemError);
+          continue;
+        }
+
+        // Calcular novo débito (não pode ficar negativo)
+        const novoDebito = Math.max(0, orderItem.debito_carcaca - item.quantidade);
+        console.log(
+          `[v0] Auto-linking: order_item ${item.order_item_id}, debito_carcaca ${orderItem.debito_carcaca} -> ${novoDebito} (quantidade: ${item.quantidade})`
+        );
+
+        // Atualizar o débito do order_item
+        const { error: updateError } = await supabase
+          .from("order_items")
+          .update({ debito_carcaca: novoDebito })
+          .eq("id", item.order_item_id);
+
+        if (updateError) {
+          console.error(`[v0] Error updating order_item ${item.order_item_id}:`, updateError);
+          continue;
+        }
+
+        // Verificar se todos os itens do pedido foram devolvidos
+        const { data: allOrderItems, error: allItemsError } = await supabase
+          .from("order_items")
+          .select("debito_carcaca")
+          .eq("order_id", orderItem.order_id);
+
+        if (!allItemsError && allOrderItems) {
+          const todosItensDevolvidos = allOrderItems.every((i) => i.debito_carcaca === 0);
+
+          if (todosItensDevolvidos) {
+            // Atualizar status do pedido para "Concluído"
+            await supabase
+              .from("orders")
+              .update({
+                status: "Concluído",
+                data_devolucao: new Date().toISOString(),
+              })
+              .eq("id", orderItem.order_id);
+            
+            console.log(`[v0] Order ${orderItem.order_id} completed - all items returned`);
+          }
+        }
+      } catch (linkError) {
+        console.error(`[v0] Error auto-linking item:`, linkError);
+        // Continua com os próximos itens mesmo se um falhar
+      }
+    }
+
+    // Verificar se todos os itens da entrada foram vinculados
+    const todosVinculados = items.every(item => item.order_item_id);
+    if (todosVinculados) {
+      await supabase
+        .from("merchandise_entries")
+        .update({ status: "Concluída" })
+        .eq("id", entryData.id);
     }
   }
 
