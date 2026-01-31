@@ -24,11 +24,15 @@ export interface DatabaseClient {
   nome: string;
   cnpj?: string;
   telefone?: string;
+  celular?: string;
   email?: string;
   endereco?: string;
   vendedor_id: string;
   ativo: boolean;
   created_at: string;
+  // Campos do portal do cliente
+  codigo_acesso?: string;
+  portal_habilitado?: boolean;
 }
 
 export interface DatabaseOrder {
@@ -506,7 +510,7 @@ export async function updateOrderStatus(
   data_devolucao?: string
 ) {
   const supabase = createClient();
-  const updateData: any = { status };
+  const updateData: { status: string; data_devolucao?: string } = { status };
 
   if (data_devolucao) {
     updateData.data_devolucao = data_devolucao;
@@ -1212,7 +1216,6 @@ export async function getPendingCarcacasByCliente(clienteId: string) {
         status,
         data_venda
       )
-      )
     `
     )
     .eq("orders.cliente_id", clienteId)
@@ -1491,7 +1494,7 @@ export async function uploadEntryDocuments(
 
 export async function getEntryDocuments(entryId: string) {
   const supabase = createClient();
-  
+
   const { data, error } = await supabase
     .from("merchandise_entry_items_documents")
     .select("*")
@@ -1504,4 +1507,429 @@ export async function getEntryDocuments(entryId: string) {
   }
 
   return data as DatabaseEntryDocument[];
+}
+
+// ============================================
+// SUPPLIERS (Fornecedores)
+// ============================================
+
+export interface DatabaseSupplier {
+  id: string;
+  nome: string;
+  cnpj?: string;
+  telefone?: string;
+  celular?: string;
+  email?: string;
+  endereco?: string;
+  observacoes?: string;
+  ativo: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function getSuppliers(includeInactive = false) {
+  const supabase = createClient();
+  let query = supabase
+    .from("suppliers")
+    .select("*")
+    .order("nome", { ascending: true });
+
+  if (!includeInactive) {
+    query = query.eq("ativo", true);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    console.error("[v0] Error fetching suppliers:", error);
+    throw error;
+  }
+
+  return data as DatabaseSupplier[];
+}
+
+export async function getSupplierById(id: string) {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("suppliers")
+    .select("*")
+    .eq("id", id)
+    .single();
+
+  if (error) {
+    console.error("[v0] Error fetching supplier:", error);
+    throw error;
+  }
+
+  return data as DatabaseSupplier;
+}
+
+export async function createSupplier(
+  supplier: Omit<DatabaseSupplier, "id" | "created_at" | "updated_at">
+) {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("suppliers")
+    .insert([supplier])
+    .select()
+    .single();
+
+  if (error) {
+    console.error("[v0] Error creating supplier:", error);
+    throw error;
+  }
+
+  return data as DatabaseSupplier;
+}
+
+export async function updateSupplier(
+  id: string,
+  supplier: Partial<DatabaseSupplier>
+) {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("suppliers")
+    .update(supplier)
+    .eq("id", id)
+    .select()
+    .single();
+
+  if (error) {
+    console.error("[v0] Error updating supplier:", error);
+    throw error;
+  }
+
+  return data as DatabaseSupplier;
+}
+
+export async function deleteSupplier(id: string) {
+  const supabase = createClient();
+
+  // Verificar se o fornecedor tem notas fiscais
+  const { data: invoices, error: checkError } = await supabase
+    .from("purchase_invoices")
+    .select("id")
+    .eq("supplier_id", id)
+    .limit(1);
+
+  if (checkError) {
+    console.error("[v0] Error checking supplier usage:", checkError);
+    throw checkError;
+  }
+
+  if (invoices && invoices.length > 0) {
+    throw new Error(
+      "Não é possível excluir um fornecedor que possui notas fiscais. Você pode inativá-lo."
+    );
+  }
+
+  const { error } = await supabase.from("suppliers").delete().eq("id", id);
+
+  if (error) {
+    console.error("[v0] Error deleting supplier:", error);
+    throw error;
+  }
+}
+
+// ============================================
+// PURCHASE INVOICES (Notas Fiscais de Compra)
+// ============================================
+
+export type PurchaseInvoiceStatus = "Pendente" | "Pago" | "Vencido";
+
+export interface DatabasePurchaseInvoice {
+  id: string;
+  supplier_id: string;
+  numero_nota: string;
+  data_nota: string;
+  data_vencimento: string;
+  valor_total: number;
+  status: PurchaseInvoiceStatus;
+  data_pagamento?: string;
+  forma_pagamento?: string;
+  observacoes?: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  suppliers?: DatabaseSupplier;
+  profiles?: { nome: string; email: string };
+}
+
+export interface DatabasePurchaseInvoiceItem {
+  id: string;
+  invoice_id: string;
+  produto_id?: string;
+  descricao: string;
+  quantidade: number;
+  valor_unitario: number;
+  valor_total: number;
+  created_at: string;
+  products?: DatabaseProduct;
+}
+
+export interface PurchaseInvoiceWithItems extends DatabasePurchaseInvoice {
+  items: DatabasePurchaseInvoiceItem[];
+}
+
+export interface PurchaseInvoiceFilters {
+  status?: PurchaseInvoiceStatus | "all";
+  supplier_id?: string;
+  dataInicio?: string;
+  dataFim?: string;
+}
+
+export async function getPurchaseInvoices(filters?: PurchaseInvoiceFilters) {
+  const supabase = createClient();
+
+  let query = supabase
+    .from("purchase_invoices")
+    .select(
+      `
+      *,
+      suppliers(*),
+      profiles!purchase_invoices_created_by_fkey(nome, email)
+    `
+    )
+    .order("data_vencimento", { ascending: true });
+
+  if (filters?.status && filters.status !== "all") {
+    query = query.eq("status", filters.status);
+  }
+
+  if (filters?.supplier_id) {
+    query = query.eq("supplier_id", filters.supplier_id);
+  }
+
+  if (filters?.dataInicio) {
+    query = query.gte("data_vencimento", filters.dataInicio);
+  }
+
+  if (filters?.dataFim) {
+    query = query.lte("data_vencimento", filters.dataFim);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    console.error("[v0] Error fetching purchase invoices:", error);
+    throw error;
+  }
+
+  // Atualizar status de notas vencidas
+  const now = new Date();
+  const updatedData = (data || []).map((invoice) => {
+    if (
+      invoice.status === "Pendente" &&
+      new Date(invoice.data_vencimento) < now
+    ) {
+      return { ...invoice, status: "Vencido" as PurchaseInvoiceStatus };
+    }
+    return invoice;
+  });
+
+  return updatedData as DatabasePurchaseInvoice[];
+}
+
+export async function getPurchaseInvoiceById(id: string) {
+  const supabase = createClient();
+
+  const { data: invoice, error: invoiceError } = await supabase
+    .from("purchase_invoices")
+    .select(
+      `
+      *,
+      suppliers(*),
+      profiles!purchase_invoices_created_by_fkey(nome, email)
+    `
+    )
+    .eq("id", id)
+    .single();
+
+  if (invoiceError) {
+    console.error("[v0] Error fetching purchase invoice:", invoiceError);
+    throw invoiceError;
+  }
+
+  const { data: items, error: itemsError } = await supabase
+    .from("purchase_invoice_items")
+    .select(
+      `
+      *,
+      products(*)
+    `
+    )
+    .eq("invoice_id", id)
+    .order("created_at", { ascending: true });
+
+  if (itemsError) {
+    console.error("[v0] Error fetching purchase invoice items:", itemsError);
+    throw itemsError;
+  }
+
+  return {
+    ...invoice,
+    items: items || [],
+  } as PurchaseInvoiceWithItems;
+}
+
+export async function createPurchaseInvoice(
+  invoice: Omit<
+    DatabasePurchaseInvoice,
+    "id" | "created_at" | "updated_at" | "suppliers" | "profiles"
+  >,
+  items: Omit<DatabasePurchaseInvoiceItem, "id" | "invoice_id" | "created_at" | "products">[]
+) {
+  const supabase = createClient();
+
+  // Calcular valor total
+  const valorTotal = items.reduce((sum, item) => sum + item.valor_total, 0);
+
+  // Criar nota
+  const { data: invoiceData, error: invoiceError } = await supabase
+    .from("purchase_invoices")
+    .insert({
+      ...invoice,
+      valor_total: valorTotal,
+    })
+    .select()
+    .single();
+
+  if (invoiceError) {
+    console.error("[v0] Error creating purchase invoice:", invoiceError);
+    throw invoiceError;
+  }
+
+  // Criar itens
+  if (items.length > 0) {
+    const { error: itemsError } = await supabase
+      .from("purchase_invoice_items")
+      .insert(
+        items.map((item) => ({
+          ...item,
+          invoice_id: invoiceData.id,
+        }))
+      );
+
+    if (itemsError) {
+      console.error("[v0] Error creating purchase invoice items:", itemsError);
+      // Deletar a nota criada
+      await supabase
+        .from("purchase_invoices")
+        .delete()
+        .eq("id", invoiceData.id);
+      throw itemsError;
+    }
+  }
+
+  return invoiceData as DatabasePurchaseInvoice;
+}
+
+export async function updatePurchaseInvoiceStatus(
+  id: string,
+  status: PurchaseInvoiceStatus,
+  data_pagamento?: string,
+  forma_pagamento?: string
+) {
+  const supabase = createClient();
+
+  const updateData: Partial<DatabasePurchaseInvoice> = { status };
+
+  if (status === "Pago") {
+    updateData.data_pagamento = data_pagamento || new Date().toISOString();
+    if (forma_pagamento) {
+      updateData.forma_pagamento = forma_pagamento;
+    }
+  }
+
+  const { data, error } = await supabase
+    .from("purchase_invoices")
+    .update(updateData)
+    .eq("id", id)
+    .select()
+    .single();
+
+  if (error) {
+    console.error("[v0] Error updating purchase invoice status:", error);
+    throw error;
+  }
+
+  return data as DatabasePurchaseInvoice;
+}
+
+export async function deletePurchaseInvoice(id: string) {
+  const supabase = createClient();
+
+  const { error } = await supabase
+    .from("purchase_invoices")
+    .delete()
+    .eq("id", id);
+
+  if (error) {
+    console.error("[v0] Error deleting purchase invoice:", error);
+    throw error;
+  }
+}
+
+export async function getPurchaseInvoicesBySupplier(supplierId: string) {
+  const supabase = createClient();
+
+  const { data, error } = await supabase
+    .from("purchase_invoices")
+    .select("*")
+    .eq("supplier_id", supplierId)
+    .order("data_vencimento", { ascending: false });
+
+  if (error) {
+    console.error("[v0] Error fetching supplier invoices:", error);
+    throw error;
+  }
+
+  return data as DatabasePurchaseInvoice[];
+}
+
+export async function getPurchaseInvoicesStats() {
+  const supabase = createClient();
+
+  const { data, error } = await supabase
+    .from("purchase_invoices")
+    .select("status, valor_total, data_vencimento");
+
+  if (error) {
+    console.error("[v0] Error fetching purchase invoices stats:", error);
+    throw error;
+  }
+
+  const now = new Date();
+  let totalPendente = 0;
+  let totalPago = 0;
+  let totalVencido = 0;
+  let countPendente = 0;
+  let countPago = 0;
+  let countVencido = 0;
+
+  (data || []).forEach((invoice) => {
+    const isVencido =
+      invoice.status === "Pendente" &&
+      new Date(invoice.data_vencimento) < now;
+
+    if (invoice.status === "Pago") {
+      totalPago += invoice.valor_total;
+      countPago++;
+    } else if (isVencido || invoice.status === "Vencido") {
+      totalVencido += invoice.valor_total;
+      countVencido++;
+    } else {
+      totalPendente += invoice.valor_total;
+      countPendente++;
+    }
+  });
+
+  return {
+    totalPendente,
+    totalPago,
+    totalVencido,
+    countPendente,
+    countPago,
+    countVencido,
+  };
 }

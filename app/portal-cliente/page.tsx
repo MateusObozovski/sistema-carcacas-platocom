@@ -2,52 +2,87 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
+import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { createClient } from "@/lib/supabase/client"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Package2, Clock, CheckCircle2, Upload, Camera } from "lucide-react"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import { StatCard } from "@/components/stat-card"
+import {
+  Package2,
+  Clock,
+  CheckCircle2,
+  FileDown,
+  DollarSign,
+  AlertTriangle,
+  ShoppingCart,
+  LogOut,
+} from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Textarea } from "@/components/ui/textarea"
-import { Label } from "@/components/ui/label"
+import { generateOrderPDF } from "@/lib/pdf-generator"
+import Image from "next/image"
 
 interface Order {
   id: string
-  numero: string
-  data_criacao: string
-  status_carcaca: string
-  items: OrderItem[]
+  numero_pedido: string
+  data_venda: string
+  status: string
+  valor_total: number
+  tipo_venda: string
+  observacoes?: string
+  order_items: OrderItem[]
 }
 
 interface OrderItem {
   id: string
   produto_nome: string
   quantidade: number
+  preco_unitario: number
   preco_final: number
   debito_carcaca: number
   tipo_venda: string
-  devolvido: boolean
+}
+
+interface ClientData {
+  id: string
+  nome: string
+  cnpj?: string
+  email?: string
 }
 
 export default function PortalClientePage() {
-  const { user } = useAuth()
+  const { user, logout, isLoading: authLoading } = useAuth()
+  const router = useRouter()
   const [orders, setOrders] = useState<Order[]>([])
+  const [clientData, setClientData] = useState<ClientData | null>(null)
   const [loading, setLoading] = useState(true)
-  const [selectedItem, setSelectedItem] = useState<{ orderId: string; itemId: string } | null>(null)
-  const [photoFile, setPhotoFile] = useState<File | null>(null)
-  const [photoPreview, setPhotoPreview] = useState<string | null>(null)
-  const [observacoes, setObservacoes] = useState("")
-  const [uploading, setUploading] = useState(false)
+  const [generatingPdf, setGeneratingPdf] = useState<string | null>(null)
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
   const supabase = createClient()
 
   useEffect(() => {
-    loadOrders()
-  }, [])
+    if (!authLoading && user) {
+      if (user.role !== "Cliente") {
+        router.push("/dashboard")
+        return
+      }
+      loadData()
+    } else if (!authLoading && !user) {
+      router.push("/login")
+    }
+  }, [user, authLoading, router])
 
-  const loadOrders = async () => {
+  const loadData = async () => {
     try {
       // Get client ID for this user
       const { data: clientUser } = await supabase
@@ -61,148 +96,193 @@ export default function PortalClientePage() {
         return
       }
 
+      // Get client data
+      const { data: client } = await supabase
+        .from("clients")
+        .select("id, nome, cnpj, email")
+        .eq("id", clientUser.client_id)
+        .single()
+
+      if (client) {
+        setClientData(client)
+      }
+
       // Get orders for this client
       const { data: ordersData } = await supabase
         .from("orders")
         .select(
           `
           id,
-          numero,
-          data_criacao,
-          status_carcaca,
+          numero_pedido,
+          data_venda,
+          status,
+          valor_total,
+          tipo_venda,
+          observacoes,
           order_items (
             id,
             produto_nome,
             quantidade,
+            preco_unitario,
             preco_final,
             debito_carcaca,
-            tipo_venda,
-            devolvido
+            tipo_venda
           )
-        `,
+        `
         )
-        .eq("client_id", clientUser.client_id)
-        .order("data_criacao", { ascending: false })
+        .eq("cliente_id", clientUser.client_id)
+        .order("data_venda", { ascending: false })
 
       setOrders(ordersData || [])
     } catch (error) {
-      console.error("[v0] Error loading orders:", error)
+      console.error("[v0] Error loading data:", error)
     } finally {
       setLoading(false)
     }
   }
 
-  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      setPhotoFile(file)
-      const reader = new FileReader()
-      reader.onloadend = () => {
-        setPhotoPreview(reader.result as string)
-      }
-      reader.readAsDataURL(file)
-    }
+  const handleLogout = async () => {
+    await logout()
+    router.push("/login")
   }
 
-  const handleMarkAsReturned = async (orderId: string, itemId: string) => {
-    setSelectedItem({ orderId, itemId })
-    setPhotoFile(null)
-    setPhotoPreview(null)
-    setObservacoes("")
-    setMessage(null)
-  }
-
-  const handleSubmitReturn = async () => {
-    if (!selectedItem) return
-
-    setUploading(true)
+  const handleDownloadPDF = async (order: Order) => {
+    setGeneratingPdf(order.id)
     setMessage(null)
 
     try {
-      let photoUrl = null
-
-      // Upload photo if provided
-      if (photoFile) {
-        const fileExt = photoFile.name.split(".").pop()
-        const fileName = `${selectedItem.orderId}_${selectedItem.itemId}_${Date.now()}.${fileExt}`
-        const { data: uploadData, error: uploadError } = await supabase.storage
-          .from("return-photos")
-          .upload(fileName, photoFile)
-
-        if (uploadError) throw uploadError
-
-        const {
-          data: { publicUrl },
-        } = supabase.storage.from("return-photos").getPublicUrl(fileName)
-        photoUrl = publicUrl
-      }
-
-      // Mark item as returned
-      const { error: updateError } = await supabase
-        .from("order_items")
-        .update({ devolvido: true })
-        .eq("id", selectedItem.itemId)
-
-      if (updateError) throw updateError
-
-      // Save photo record if uploaded
-      if (photoUrl) {
-        await supabase.from("return_photos").insert({
-          order_id: selectedItem.orderId,
-          order_item_id: selectedItem.itemId,
-          photo_url: photoUrl,
-          uploaded_by: user?.id,
-          observacoes: observacoes || null,
-        })
-      }
-
-      setMessage({ type: "success", text: "Devolução registrada com sucesso!" })
-      setSelectedItem(null)
-      loadOrders()
+      await generateOrderPDF({
+        ...order,
+        cliente_nome: clientData?.nome,
+      })
+      setMessage({ type: "success", text: "PDF gerado com sucesso!" })
     } catch (error) {
-      console.error("[v0] Error submitting return:", error)
-      setMessage({ type: "error", text: "Erro ao registrar devolução. Tente novamente." })
+      console.error("[v0] Error generating PDF:", error)
+      setMessage({ type: "error", text: "Erro ao gerar PDF. Tente novamente." })
     } finally {
-      setUploading(false)
+      setGeneratingPdf(null)
     }
   }
+
+  // Calcular estatísticas
+  const stats = useMemo(() => {
+    const totalPedidos = orders.length
+    const carcacasPendentes = orders.reduce(
+      (sum, order) =>
+        sum + order.order_items.reduce((itemSum, item) => itemSum + item.debito_carcaca, 0),
+      0
+    )
+    const pedidosPendentes = orders.filter(
+      (o) => o.status === "Aguardando Devolução" || o.status === "Atrasado"
+    ).length
+    const pedidosAtrasados = orders.filter((o) => o.status === "Atrasado").length
+
+    return {
+      totalPedidos,
+      carcacasPendentes,
+      pedidosPendentes,
+      pedidosAtrasados,
+    }
+  }, [orders])
 
   const getStatusBadge = (status: string) => {
-    const variants: Record<string, { variant: any; label: string }> = {
-      aguardando: { variant: "default", label: "Aguardando" },
-      atrasado: { variant: "destructive", label: "Atrasado" },
-      devolvida: { variant: "default", label: "Devolvida" },
+    switch (status) {
+      case "Aguardando Devolução":
+        return (
+          <Badge variant="outline" className="bg-yellow-500/10 text-yellow-600 border-yellow-500/20">
+            <Clock className="mr-1 h-3 w-3" />
+            Aguardando
+          </Badge>
+        )
+      case "Atrasado":
+        return (
+          <Badge variant="destructive">
+            <AlertTriangle className="mr-1 h-3 w-3" />
+            Atrasado
+          </Badge>
+        )
+      case "Concluído":
+        return (
+          <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20">
+            <CheckCircle2 className="mr-1 h-3 w-3" />
+            Concluído
+          </Badge>
+        )
+      case "Perda Total":
+        return (
+          <Badge variant="destructive">
+            Perda Total
+          </Badge>
+        )
+      default:
+        return <Badge variant="outline">{status}</Badge>
     }
-    const config = variants[status] || variants.aguardando
-    return (
-      <Badge variant={config.variant} className="bg-yellow-500/10 text-yellow-500 border-yellow-500/20">
-        {config.label}
-      </Badge>
-    )
   }
 
-  if (loading) {
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+    }).format(value)
+  }
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString("pt-BR")
+  }
+
+  if (authLoading || loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
+      <div className="flex min-h-screen items-center justify-center bg-background">
         <div className="text-center">
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent mx-auto mb-4" />
-          <p className="text-muted-foreground">Carregando pedidos...</p>
+          <p className="text-muted-foreground">Carregando...</p>
         </div>
       </div>
     )
   }
 
+  if (!user || user.role !== "Cliente") {
+    return null
+  }
+
   return (
-    <div className="min-h-screen bg-background p-4 md:p-8">
-      <div className="mx-auto max-w-6xl space-y-6">
-        <div className="flex items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary">
-            <Package2 className="h-6 w-6 text-primary-foreground" />
+    <div className="min-h-screen bg-background">
+      {/* Header */}
+      <header className="border-b bg-card">
+        <div className="container mx-auto px-4 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <Image
+                src="/logo-sem-fundo.png"
+                alt="Platocom"
+                width={120}
+                height={40}
+                className="object-contain"
+              />
+              <div className="hidden md:block border-l pl-4">
+                <h1 className="text-lg font-semibold">Portal do Cliente</h1>
+                <p className="text-sm text-muted-foreground">{clientData?.nome}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-4">
+              <span className="text-sm text-muted-foreground hidden md:block">
+                {user?.name}
+              </span>
+              <Button variant="outline" size="sm" onClick={handleLogout}>
+                <LogOut className="h-4 w-4 mr-2" />
+                Sair
+              </Button>
+            </div>
           </div>
-          <div>
-            <h1 className="text-2xl font-bold">Portal do Cliente</h1>
-            <p className="text-muted-foreground">Bem-vindo, {user?.name}</p>
-          </div>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <main className="container mx-auto px-4 py-6 space-y-6">
+        {/* Welcome Message on Mobile */}
+        <div className="md:hidden">
+          <h1 className="text-xl font-semibold">Portal do Cliente</h1>
+          <p className="text-sm text-muted-foreground">{clientData?.nome}</p>
         </div>
 
         {message && (
@@ -211,126 +291,180 @@ export default function PortalClientePage() {
           </Alert>
         )}
 
-        {selectedItem && (
-          <Card className="border-primary">
+        {/* Stats Cards */}
+        <div className="grid gap-4 md:grid-cols-4">
+          <StatCard
+            title="Total de Pedidos"
+            value={stats.totalPedidos}
+            icon={ShoppingCart}
+            description="Pedidos realizados"
+          />
+          <StatCard
+            title="Carcaças Pendentes"
+            value={stats.carcacasPendentes}
+            icon={Package2}
+            description="Aguardando devolução"
+          />
+          <StatCard
+            title="Pedidos Pendentes"
+            value={stats.pedidosPendentes}
+            icon={Clock}
+            description="Com carcaças a devolver"
+          />
+          <StatCard
+            title="Pedidos Atrasados"
+            value={stats.pedidosAtrasados}
+            icon={AlertTriangle}
+            description="Prazo excedido"
+            className={stats.pedidosAtrasados > 0 ? "border-red-500/50" : ""}
+          />
+        </div>
+
+        {/* Carcaças Pendentes */}
+        {stats.carcacasPendentes > 0 && (
+          <Card className="border-yellow-500/50">
             <CardHeader>
-              <CardTitle>Registrar Devolução</CardTitle>
-              <CardDescription>Informe que está devolvendo este produto</CardDescription>
+              <CardTitle className="flex items-center gap-2">
+                <Package2 className="h-5 w-5 text-yellow-600" />
+                Carcaças Pendentes
+              </CardTitle>
+              <CardDescription>
+                Itens com carcaças aguardando devolução
+              </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label>Foto do Produto (Opcional)</Label>
-                <div className="flex gap-4">
-                  <Button type="button" variant="outline" className="relative bg-transparent" disabled={uploading}>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handlePhotoSelect}
-                      className="absolute inset-0 opacity-0 cursor-pointer"
-                      disabled={uploading}
-                    />
-                    <Camera className="mr-2 h-4 w-4" />
-                    Selecionar Foto
-                  </Button>
-                  {photoPreview && (
-                    <img
-                      src={photoPreview || "/placeholder.svg"}
-                      alt="Preview"
-                      className="h-20 w-20 rounded object-cover"
-                    />
-                  )}
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="observacoes">Observações (Opcional)</Label>
-                <Textarea
-                  id="observacoes"
-                  placeholder="Adicione observações sobre a devolução..."
-                  value={observacoes}
-                  onChange={(e) => setObservacoes(e.target.value)}
-                  disabled={uploading}
-                />
-              </div>
-
-              <div className="flex gap-2">
-                <Button onClick={handleSubmitReturn} disabled={uploading}>
-                  {uploading ? "Enviando..." : "Confirmar Devolução"}
-                </Button>
-                <Button variant="outline" onClick={() => setSelectedItem(null)} disabled={uploading}>
-                  Cancelar
-                </Button>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Pedido</TableHead>
+                      <TableHead>Produto</TableHead>
+                      <TableHead className="text-center">Qtd. Pendente</TableHead>
+                      <TableHead>Data</TableHead>
+                      <TableHead>Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {orders
+                      .filter(
+                        (o) =>
+                          o.status === "Aguardando Devolução" || o.status === "Atrasado"
+                      )
+                      .flatMap((order) =>
+                        order.order_items
+                          .filter((item) => item.debito_carcaca > 0)
+                          .map((item) => (
+                            <TableRow key={`${order.id}-${item.id}`}>
+                              <TableCell className="font-mono text-sm">
+                                {order.numero_pedido}
+                              </TableCell>
+                              <TableCell>{item.produto_nome}</TableCell>
+                              <TableCell className="text-center font-semibold">
+                                {item.debito_carcaca}
+                              </TableCell>
+                              <TableCell>{formatDate(order.data_venda)}</TableCell>
+                              <TableCell>{getStatusBadge(order.status)}</TableCell>
+                            </TableRow>
+                          ))
+                      )}
+                  </TableBody>
+                </Table>
               </div>
             </CardContent>
           </Card>
         )}
 
-        <div className="space-y-4">
-          <h2 className="text-xl font-semibold">Meus Pedidos</h2>
-
-          {orders.length === 0 ? (
-            <Card>
-              <CardContent className="py-12 text-center">
+        {/* Lista de Pedidos */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <ShoppingCart className="h-5 w-5" />
+              Meus Pedidos
+            </CardTitle>
+            <CardDescription>
+              Histórico de todos os seus pedidos
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {orders.length === 0 ? (
+              <div className="py-12 text-center">
                 <Package2 className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
                 <p className="text-muted-foreground">Nenhum pedido encontrado</p>
-              </CardContent>
-            </Card>
-          ) : (
-            orders.map((order) => (
-              <Card key={order.id}>
-                <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <CardTitle className="text-lg">Pedido {order.numero}</CardTitle>
-                      <CardDescription>
-                        <Clock className="inline h-3 w-3 mr-1" />
-                        {new Date(order.data_criacao).toLocaleDateString("pt-BR")}
-                      </CardDescription>
-                    </div>
-                    {getStatusBadge(order.status_carcaca)}
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {order.items?.map((item) => (
-                      <div key={item.id} className="flex items-center justify-between rounded-lg border p-4 bg-card/50">
-                        <div className="flex-1">
-                          <p className="font-medium">{item.produto_nome}</p>
-                          <p className="text-sm text-muted-foreground">
-                            Quantidade: {item.quantidade} | Valor: R$ {item.preco_final.toFixed(2)}
-                          </p>
-                          {item.tipo_venda === "base-troca" && (
-                            <p className="text-sm text-yellow-500">
-                              Débito de carcaça: R$ {item.debito_carcaca.toFixed(2)}
-                            </p>
-                          )}
-                        </div>
-                        <div>
-                          {item.devolvido ? (
-                            <Badge variant="default" className="bg-green-500/10 text-green-500 border-green-500/20">
-                              <CheckCircle2 className="mr-1 h-3 w-3" />
-                              Devolvido
-                            </Badge>
-                          ) : item.tipo_venda === "base-troca" ? (
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Pedido</TableHead>
+                      <TableHead>Data</TableHead>
+                      <TableHead>Tipo</TableHead>
+                      <TableHead className="text-right">Valor</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-center">Carcaças</TableHead>
+                      <TableHead className="text-right">Ações</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {orders.map((order) => {
+                      const carcacasPendentes = order.order_items.reduce(
+                        (sum, item) => sum + item.debito_carcaca,
+                        0
+                      )
+                      return (
+                        <TableRow key={order.id}>
+                          <TableCell className="font-mono text-sm font-medium">
+                            {order.numero_pedido}
+                          </TableCell>
+                          <TableCell>{formatDate(order.data_venda)}</TableCell>
+                          <TableCell>
+                            {order.tipo_venda === "Base de Troca" ? (
+                              <Badge variant="secondary">Base de Troca</Badge>
+                            ) : (
+                              <Badge variant="outline">Normal</Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right font-medium">
+                            {formatCurrency(order.valor_total)}
+                          </TableCell>
+                          <TableCell>{getStatusBadge(order.status)}</TableCell>
+                          <TableCell className="text-center">
+                            {carcacasPendentes > 0 ? (
+                              <span className="text-yellow-600 font-medium">
+                                {carcacasPendentes} pendente(s)
+                              </span>
+                            ) : (
+                              <span className="text-green-600">OK</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right">
                             <Button
+                              variant="outline"
                               size="sm"
-                              onClick={() => handleMarkAsReturned(order.id, item.id)}
-                              disabled={!!selectedItem}
+                              onClick={() => handleDownloadPDF(order)}
+                              disabled={generatingPdf === order.id}
                             >
-                              <Upload className="mr-2 h-4 w-4" />
-                              Devolver
+                              <FileDown className="h-4 w-4 mr-1" />
+                              {generatingPdf === order.id ? "Gerando..." : "PDF"}
                             </Button>
-                          ) : null}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            ))
-          )}
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </main>
+
+      {/* Footer */}
+      <footer className="border-t bg-card mt-auto">
+        <div className="container mx-auto px-4 py-4 text-center text-sm text-muted-foreground">
+          Platocom - Sistema de Carcaças
         </div>
-      </div>
+      </footer>
     </div>
   )
 }

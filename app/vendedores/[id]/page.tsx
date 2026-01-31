@@ -233,13 +233,21 @@ export default function VendedorDetalhePage() {
                             p.status === "Atrasado"
                         );
 
+                        // Tipo para order_item
+                        interface OrderItem {
+                          debito_carcaca?: number;
+                          desconto_percentual?: number;
+                          preco_unitario?: number;
+                          quantidade?: number;
+                        }
+
                         // Calcular Débito Total: soma dos valores de desconto dos order_items pendentes
                         const clienteDebito = pedidosPendentes.reduce(
-                          (sum, pedido) => {
+                          (sum: number, pedido: { order_items?: OrderItem[] }) => {
                             if (!pedido.order_items) return sum;
                             return (
                               sum +
-                              pedido.order_items.reduce((itemSum, item) => {
+                              pedido.order_items.reduce((itemSum: number, item: OrderItem) => {
                                 if ((item.debito_carcaca || 0) <= 0)
                                   return itemSum;
                                 const descontoPercentual =
@@ -268,11 +276,11 @@ export default function VendedorDetalhePage() {
 
                         // Calcular Carcaças Pendentes: soma das quantidades dos order_items pendentes
                         const clienteCarcacas = pedidosPendentes.reduce(
-                          (sum, pedido) => {
+                          (sum: number, pedido: { order_items?: OrderItem[] }) => {
                             if (!pedido.order_items) return sum;
                             return (
                               sum +
-                              pedido.order_items.reduce((itemSum, item) => {
+                              pedido.order_items.reduce((itemSum: number, item: OrderItem) => {
                                 if ((item.debito_carcaca || 0) > 0) {
                                   return itemSum + (item.quantidade || 0);
                                 }

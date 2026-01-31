@@ -16,6 +16,8 @@ import {
   Settings,
   ArrowRightLeft,
   PackageCheck,
+  Truck,
+  Receipt,
 } from "lucide-react";
 
 interface DashboardNavProps {
@@ -90,6 +92,18 @@ export function DashboardNav({ isOpen, onClose }: DashboardNavProps) {
       href: "/produtos",
       icon: Box,
       roles: ["admin", "Gerente"],
+    },
+    {
+      title: "Fornecedores",
+      href: "/fornecedores",
+      icon: Truck,
+      roles: ["admin", "Gerente", "Coordenador"],
+    },
+    {
+      title: "Notas de Compra",
+      href: "/notas-compra",
+      icon: Receipt,
+      roles: ["admin", "Gerente", "Coordenador"],
     },
     {
       title: "Relatórios",

@@ -28,17 +28,59 @@ import { createBrowserClient } from "@supabase/ssr"
 import { isAuthError } from "@/lib/utils"
 import { useRouter } from "next/navigation"
 
+// Tipos para os dados - usando tipos genéricos compatíveis com Supabase
+interface VendedorSimples {
+  id: string;
+  nome: string;
+}
+
+interface ClienteSimples {
+  id: string;
+  nome: string;
+}
+
+type StatusFiltro = "todos" | "aguardando" | "atrasado";
+
+// Tipo genérico para os dados do Supabase (evita conflitos com tipos inferidos)
+interface CarcacaItem {
+  id: string;
+  ordem: string;
+  orders: {
+    id: string;
+    numero_pedido: string;
+    vendedor_id: string;
+    cliente_id: string;
+    data_venda: string;
+    data_devolucao: string | null;
+    created_at: string;
+    clients: {
+      id: string;
+      nome: string;
+      vendedor_id: string;
+    } | null;
+    profiles: {
+      id: string;
+      nome: string;
+      email: string;
+    } | null;
+  } | null;
+  produto_nome: string;
+  debito_carcaca: number;
+  tipo_venda: string;
+  created_at: string;
+}
+
 export default function CarcacasPendentesPage() {
   const { user } = useAuth()
   const { toast } = useToast()
   const router = useRouter()
   const [searchTerm, setSearchTerm] = useState("")
-  const [statusFiltro, setStatusFiltro] = useState<"todos" | "aguardando" | "atrasado">("todos")
+  const [statusFiltro, setStatusFiltro] = useState<StatusFiltro>("todos")
   const [vendedorFiltro, setVendedorFiltro] = useState<string>("todos")
   const [clienteFiltro, setClienteFiltro] = useState<string>("todos")
-  const [carcacasPendentes, setCarcacasPendentes] = useState<any[]>([])
-  const [vendedores, setVendedores] = useState<any[]>([])
-  const [clientes, setClientes] = useState<any[]>([])
+  const [carcacasPendentes, setCarcacasPendentes] = useState<CarcacaItem[]>([])
+  const [vendedores, setVendedores] = useState<VendedorSimples[]>([])
+  const [clientes, setClientes] = useState<ClienteSimples[]>([])
   const [loading, setLoading] = useState(true)
 
   const supabase = createBrowserClient(
@@ -130,9 +172,9 @@ export default function CarcacasPendentesPage() {
           return
         }
 
-        let filtered = orderItems || []
+        let filtered = (orderItems || []) as unknown as CarcacaItem[]
         if (user?.role === "Vendedor") {
-          filtered = filtered.filter((item: any) => item.orders?.vendedor_id === user.id)
+          filtered = filtered.filter((item) => item.orders?.vendedor_id === user.id)
         }
 
         setCarcacasPendentes(filtered)
@@ -155,7 +197,7 @@ export default function CarcacasPendentesPage() {
 
         // Carregar clientes únicos das carcaças pendentes
         const clientesUnicos = new Map()
-        filtered.forEach((item: any) => {
+        filtered.forEach((item) => {
           if (item.orders?.clients) {
             const cliente = item.orders.clients
             if (!clientesUnicos.has(cliente.id)) {
@@ -167,7 +209,7 @@ export default function CarcacasPendentesPage() {
           }
         })
         setClientes(Array.from(clientesUnicos.values()).sort((a, b) => a.nome.localeCompare(b.nome)))
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error("[v0] Error in fetchCarcacas:", err)
         
         if (!isMounted) return
@@ -258,7 +300,7 @@ export default function CarcacasPendentesPage() {
         const dataDevolucao = new Date().toISOString()
         try {
           await updateOrderStatus(orderId, "Concluído", dataDevolucao)
-        } catch (orderError: any) {
+        } catch (orderError: unknown) {
           console.error("[v0] Error updating order status:", orderError)
           // Não falhar se não conseguir atualizar o status, apenas logar
         }
@@ -303,9 +345,9 @@ export default function CarcacasPendentesPage() {
             return
           }
 
-          let filtered = orderItems || []
+          let filtered = (orderItems || []) as unknown as CarcacaItem[]
           if (user?.role === "Vendedor") {
-            filtered = filtered.filter((item: any) => item.orders?.vendedor_id === user.id)
+            filtered = filtered.filter((item) => item.orders?.vendedor_id === user.id)
           }
 
           setCarcacasPendentes(filtered)
@@ -320,11 +362,11 @@ export default function CarcacasPendentesPage() {
         title: "Devolução registrada!",
         description: `${debitoValue} carcaça(s) devolvida(s)`,
       })
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("[v0] Error registering devolucao:", err)
       toast({
         title: "Erro ao registrar devolução",
-        description: err?.message || "Não foi possível registrar a devolução",
+        description: err instanceof Error ? err.message : "Não foi possível registrar a devolução",
         variant: "destructive",
       })
     }
@@ -467,7 +509,7 @@ export default function CarcacasPendentesPage() {
                   ))}
                 </SelectContent>
               </Select>
-              <Select value={statusFiltro} onValueChange={(v) => setStatusFiltro(v as any)}>
+              <Select value={statusFiltro} onValueChange={(v) => setStatusFiltro(v as StatusFiltro)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
@@ -542,7 +584,7 @@ export default function CarcacasPendentesPage() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => handleLembrarCliente(item.orders?.clients?.nome)}
+                              onClick={() => handleLembrarCliente(item.orders?.clients?.nome || "Cliente")}
                               title="Lembrar cliente"
                             >
                               <Bell className="h-4 w-4" />
@@ -565,7 +607,7 @@ export default function CarcacasPendentesPage() {
                                   <AlertDialogCancel>Cancelar</AlertDialogCancel>
                                   <AlertDialogAction
                                     onClick={() =>
-                                      handleRegistrarDevolucao(item.id, item.debito_carcaca, item.orders?.id)
+                                      item.orders?.id && handleRegistrarDevolucao(item.id, item.debito_carcaca, item.orders.id)
                                     }
                                   >
                                     Confirmar Devolução

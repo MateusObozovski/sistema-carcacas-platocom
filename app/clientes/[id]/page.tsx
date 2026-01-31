@@ -11,6 +11,8 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Table,
   TableBody,
@@ -20,15 +22,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { StatusBadge } from "@/components/status-badge";
-import {
-  getClientById,
-  getOrders,
-  createClient,
-} from "@/lib/supabase/database";
+import { getClientById } from "@/lib/supabase/database";
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
 import Link from "next/link";
-import { ArrowLeft, DollarSign, Package, ShoppingCart } from "lucide-react";
+import { ArrowLeft, DollarSign, Package, ShoppingCart, UserCog, Eye, EyeOff, CheckCircle2 } from "lucide-react";
 import { StatCard } from "@/components/stat-card";
+import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth-context";
 
 // Helper function to map database status to StatusBadge status
 function mapStatusToBadge(
@@ -43,11 +43,20 @@ function mapStatusToBadge(
 
 export default function ClienteDetalhePage() {
   const params = useParams();
+  const { user } = useAuth();
+  const { toast } = useToast();
   const [cliente, setCliente] = useState<any>(null);
   const [vendedor, setVendedor] = useState<any>(null);
   const [pedidosCliente, setPedidosCliente] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const supabase = createSupabaseClient();
+
+  // Estados para o portal do cliente
+  const [showPortalConfig, setShowPortalConfig] = useState(false);
+  const [codigoAcesso, setCodigoAcesso] = useState("");
+  const [senhaPortal, setSenhaPortal] = useState("");
+  const [showSenha, setShowSenha] = useState(false);
+  const [isCreatingAccess, setIsCreatingAccess] = useState(false);
 
   useEffect(() => {
     const loadData = async () => {
@@ -107,6 +116,67 @@ export default function ClienteDetalhePage() {
     const now = new Date();
     const diff = now.getTime() - created.getTime();
     return Math.floor(diff / (1000 * 60 * 60 * 24));
+  };
+
+  const handleCreatePortalAccess = async () => {
+    if (!codigoAcesso.trim() || !senhaPortal.trim()) {
+      toast({
+        title: "Erro",
+        description: "Preencha o código de acesso e a senha",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (senhaPortal.length < 6) {
+      toast({
+        title: "Erro",
+        description: "A senha deve ter no mínimo 6 caracteres",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsCreatingAccess(true);
+
+    try {
+      const response = await fetch("/api/create-client-user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clientId: cliente.id,
+          codigoAcesso: codigoAcesso.trim(),
+          senha: senhaPortal,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Erro ao criar acesso");
+      }
+
+      toast({
+        title: "Sucesso",
+        description: "Acesso ao portal criado com sucesso!",
+      });
+
+      // Atualizar dados do cliente
+      const clienteData = await getClientById(params.id as string);
+      setCliente(clienteData);
+      setShowPortalConfig(false);
+      setCodigoAcesso("");
+      setSenhaPortal("");
+    } catch (error: any) {
+      console.error("[v0] Error creating portal access:", error);
+      toast({
+        title: "Erro",
+        description: error.message || "Não foi possível criar o acesso ao portal",
+        variant: "destructive",
+      });
+    } finally {
+      setIsCreatingAccess(false);
+    }
   };
 
   if (isLoading) {
@@ -182,6 +252,105 @@ export default function ClienteDetalhePage() {
             description="Total gerado nas negociações"
           />
         </div>
+
+        {/* Card de Configuração do Portal do Cliente */}
+        {(user?.role === "admin" || user?.role === "Gerente" || user?.role === "Coordenador") && (
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <UserCog className="h-5 w-5" />
+                    Acesso ao Portal do Cliente
+                  </CardTitle>
+                  <CardDescription>
+                    Configure o acesso do cliente ao portal para visualizar pedidos e carcaças
+                  </CardDescription>
+                </div>
+                {cliente.portal_habilitado && (
+                  <div className="flex items-center gap-2 text-green-600">
+                    <CheckCircle2 className="h-5 w-5" />
+                    <span className="text-sm font-medium">Portal Habilitado</span>
+                  </div>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent>
+              {cliente.portal_habilitado ? (
+                <div className="space-y-4">
+                  <div className="rounded-lg bg-muted p-4">
+                    <p className="text-sm text-muted-foreground mb-2">Código de Acesso:</p>
+                    <p className="font-mono text-lg font-bold">{cliente.codigo_acesso}</p>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      O cliente pode fazer login na mesma página de login usando este código como email: <span className="font-mono">{cliente.codigo_acesso}@portal.platocom.com.br</span>
+                    </p>
+                  </div>
+                </div>
+              ) : showPortalConfig ? (
+                <div className="space-y-4">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="codigoAcesso">Código de Acesso *</Label>
+                      <Input
+                        id="codigoAcesso"
+                        value={codigoAcesso}
+                        onChange={(e) => setCodigoAcesso(e.target.value.replace(/\s/g, ""))}
+                        placeholder="Ex: cliente123"
+                        disabled={isCreatingAccess}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Código único para o cliente fazer login (sem espaços)
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="senhaPortal">Senha *</Label>
+                      <div className="relative">
+                        <Input
+                          id="senhaPortal"
+                          type={showSenha ? "text" : "password"}
+                          value={senhaPortal}
+                          onChange={(e) => setSenhaPortal(e.target.value)}
+                          placeholder="Mínimo 6 caracteres"
+                          disabled={isCreatingAccess}
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="absolute right-0 top-0 h-full px-3"
+                          onClick={() => setShowSenha(!showSenha)}
+                        >
+                          {showSenha ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button onClick={handleCreatePortalAccess} disabled={isCreatingAccess}>
+                      {isCreatingAccess ? "Criando..." : "Criar Acesso ao Portal"}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setShowPortalConfig(false);
+                        setCodigoAcesso("");
+                        setSenhaPortal("");
+                      }}
+                      disabled={isCreatingAccess}
+                    >
+                      Cancelar
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <Button onClick={() => setShowPortalConfig(true)}>
+                  <UserCog className="mr-2 h-4 w-4" />
+                  Configurar Acesso ao Portal
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader>

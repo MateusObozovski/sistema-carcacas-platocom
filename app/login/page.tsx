@@ -32,11 +32,13 @@ export default function LoginPage() {
 
       console.log("[v0] Login result:", result)
 
-      if (result.success) {
-        console.log("[v0] Redirecting to dashboard...")
+      if (result.success && result.user) {
+        // Redirecionar baseado no role do usuário
+        const redirectPath = result.user.role === "Cliente" ? "/portal-cliente" : "/dashboard"
+        console.log("[v0] Redirecting to", redirectPath, "for role:", result.user.role)
         // Pequeno delay para garantir que o estado foi atualizado
         setTimeout(() => {
-          router.push("/dashboard")
+          router.push(redirectPath)
         }, 100)
       } else {
         // Verificar no console qual foi o erro específico

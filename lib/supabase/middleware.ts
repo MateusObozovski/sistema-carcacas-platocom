@@ -49,15 +49,17 @@ export async function updateSession(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname
 
+  // Rotas públicas - NÃO incluir APIs sensíveis aqui
   const isPublicPath =
     pathname === "/" ||
     pathname === "/login" ||
-    pathname === "/login" ||
-    pathname.startsWith("/api/setup-users") ||
-    pathname.startsWith("/api/create-profile") ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/_vercel") ||
     pathname.startsWith("/favicon")
+
+  // APIs que fazem sua própria validação de autenticação
+  // O middleware não redireciona para login, deixa a API responder adequadamente
+  const isApiWithOwnAuth = pathname.startsWith("/api/create-profile")
 
   // If user is authenticated and trying to access login, redirect to dashboard
   if (user && pathname === "/login") {
@@ -67,7 +69,8 @@ export async function updateSession(request: NextRequest) {
   }
 
   // If no user and trying to access protected route, redirect to login
-  if (!user && !isPublicPath) {
+  // Exceção: APIs com autenticação própria não são redirecionadas
+  if (!user && !isPublicPath && !isApiWithOwnAuth) {
     const url = request.nextUrl.clone()
     url.pathname = "/login"
     return NextResponse.redirect(url)
@@ -88,21 +91,30 @@ export async function updateSession(request: NextRequest) {
     supabaseResponse.headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
   }
 
-  // Content Security Policy
-  const csp = [
+  // Content Security Policy - mais restritivo em produção
+  const cspDirectives = [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://vercel.live https://va.vercel-scripts.com",
+    // Em produção: remove unsafe-eval, usa strict-dynamic
+    // Em dev: mantém unsafe-eval para Hot Module Replacement
+    isProduction
+      ? "script-src 'self' 'strict-dynamic' https://vercel.live https://va.vercel-scripts.com"
+      : "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://vercel.live https://va.vercel-scripts.com",
+    // Estilos: unsafe-inline necessário para CSS-in-JS/Tailwind
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: https:",
+    "img-src 'self' data: https: blob:",
     "font-src 'self' data:",
-    "object-src 'self' data:",
-    "connect-src 'self' https://*.supabase.co https://*.supabase.in https://vercel.live https://va.vercel-scripts.com",
+    "object-src 'none'", // Mais restritivo - bloqueia plugins
+    "connect-src 'self' https://*.supabase.co https://*.supabase.in https://vercel.live https://va.vercel-scripts.com wss://*.supabase.co",
     "frame-ancestors 'none'",
     "base-uri 'self'",
     "form-action 'self'",
-  ].join("; ")
+    "upgrade-insecure-requests", // Força HTTPS em recursos
+  ]
 
-  supabaseResponse.headers.set("Content-Security-Policy", csp)
+  // Em produção, usar Content-Security-Policy
+  // Em desenvolvimento, usar report-only para não quebrar HMR
+  const cspHeader = isProduction ? "Content-Security-Policy" : "Content-Security-Policy-Report-Only"
+  supabaseResponse.headers.set(cspHeader, cspDirectives.join("; "))
 
   // Headers de cache para rotas autenticadas
   if (user && !isPublicPath) {

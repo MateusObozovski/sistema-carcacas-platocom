@@ -29,7 +29,6 @@ export interface User {
   id: string;
   name: string;
   email: string;
-  password: string;
   role: UserRole;
 }
 
@@ -113,4 +112,51 @@ export interface ProductImportRow {
   caracteristicas?: string;
   marca: string;
   tipo: string;
+}
+
+// Tipos para Fornecedores
+export interface Supplier {
+  id: string;
+  nome: string;
+  cnpj?: string;
+  telefone?: string;
+  celular?: string;
+  email?: string;
+  endereco?: string;
+  observacoes?: string;
+  ativo: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// Status de pagamento da nota fiscal
+export type PurchaseInvoiceStatus = "Pendente" | "Pago" | "Vencido";
+
+// Tipos para Notas Fiscais de Compra
+export interface PurchaseInvoice {
+  id: string;
+  supplier_id: string;
+  numero_nota: string;
+  data_nota: string;
+  data_vencimento: string;
+  valor_total: number;
+  status: PurchaseInvoiceStatus;
+  data_pagamento?: string;
+  forma_pagamento?: string;
+  observacoes?: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// Tipos para Itens da Nota Fiscal
+export interface PurchaseInvoiceItem {
+  id: string;
+  invoice_id: string;
+  produto_id?: string;
+  descricao: string;
+  quantidade: number;
+  valor_unitario: number;
+  valor_total: number;
+  created_at: string;
 }

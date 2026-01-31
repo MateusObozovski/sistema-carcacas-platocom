@@ -16,7 +16,7 @@ const APP_VERSION = "1.0.0";
 
 interface AuthContextType {
   user: User | null;
-  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  login: (email: string, password: string) => Promise<{ success: boolean; error?: string; user?: User }>;
   logout: () => void;
   isLoading: boolean;
 }
@@ -374,7 +374,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
+  const login = async (email: string, password: string): Promise<{ success: boolean; error?: string; user?: User }> => {
     try {
       console.log("[v0] Attempting login for:", email);
 
@@ -430,15 +430,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
           if (createdProfile) {
             const userRole = createdProfile.role as UserRole;
-            setUser({
+            const loggedUser: User = {
               id: createdProfile.id,
               name: createdProfile.nome,
               email: createdProfile.email,
               role: userRole,
-            });
+            };
+            setUser(loggedUser);
             userLoaded.current = true;
             currentUserId.current = createdProfile.id;
-            return { success: true };
+            return { success: true, user: loggedUser };
           }
 
           // Não foi possível criar profile, força logout para limpar sessão inválida
@@ -451,12 +452,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (profile) {
           const userRole = profile.role as UserRole;
-          setUser({
+          const loggedUser: User = {
             id: profile.id,
             name: profile.nome,
             email: profile.email,
             role: userRole,
-          });
+          };
+          setUser(loggedUser);
           userLoaded.current = true;
           currentUserId.current = profile.id;
           console.log(
@@ -465,7 +467,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             "profile.role:",
             profile.role
           );
-          return { success: true };
+          return { success: true, user: loggedUser };
         } else {
           console.error("[v0] No profile found for user ID:", data.user.id);
           console.log("[v0] User metadata:", data.user.user_metadata);
@@ -483,19 +485,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
           if (createdProfile) {
             const userRole = createdProfile.role as UserRole;
-            setUser({
+            const loggedUser: User = {
               id: createdProfile.id,
               name: createdProfile.nome,
               email: createdProfile.email,
               role: userRole,
-            });
+            };
+            setUser(loggedUser);
             userLoaded.current = true;
             currentUserId.current = createdProfile.id;
             console.log(
               "[v0] Profile created and login complete - role:",
               userRole
             );
-            return { success: true };
+            return { success: true, user: loggedUser };
           }
 
           console.error(

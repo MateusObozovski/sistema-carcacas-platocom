@@ -15,7 +15,14 @@ function getIP(request: NextRequest): string {
 // Schema de validação
 const resetPasswordSchema = z.object({
   userId: z.string().uuid("ID de usuário inválido"),
-  newPassword: z.string().min(6, "Senha deve ter no mínimo 6 caracteres").max(100),
+  newPassword: z
+    .string()
+    .min(8, "Senha deve ter no mínimo 8 caracteres")
+    .max(100)
+    .regex(
+      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/,
+      "Senha deve conter pelo menos uma letra maiúscula, uma minúscula e um número"
+    ),
 })
 
 export async function POST(request: NextRequest) {

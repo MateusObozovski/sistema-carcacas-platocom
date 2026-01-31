@@ -22,8 +22,8 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { ProtectedRoute } from "@/components/protected-route"
 import { useAuth } from "@/lib/auth-context"
-import { getOrderByNumber, updateOrderStatus, createClient } from "@/lib/supabase/database"
-import { createClient as createSupabaseClient } from "@/lib/supabase/client"
+import { getOrderByNumber, updateOrderStatus } from "@/lib/supabase/database"
+import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
 import { ArrowLeft, Search } from "lucide-react"
 import Link from "next/link"
@@ -42,7 +42,7 @@ export default function RegistrarDevolucaoPage() {
   const { user } = useAuth()
   const router = useRouter()
   const { toast } = useToast()
-  const supabase = createSupabaseClient()
+  const supabase = createClient()
 
   const [numeroPedido, setNumeroPedido] = useState("")
   const [pedidoEncontrado, setPedidoEncontrado] = useState<any>(null)

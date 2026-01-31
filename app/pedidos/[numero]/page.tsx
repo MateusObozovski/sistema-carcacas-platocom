@@ -7,15 +7,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/status-badge";
 import { useAuth } from "@/lib/auth-context";
-import {
-  getOrderByNumber,
-  updateOrderStatus,
-  createClient as createSupabaseClient,
-} from "@/lib/supabase/database";
+import { getOrderByNumber, updateOrderStatus } from "@/lib/supabase/database";
 import { createClient } from "@/lib/supabase/client";
 import { ArrowLeft, CheckCircle, Package, FileText } from "lucide-react";
 import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
+import type { DatabaseOrder, DatabaseOrderItem, DatabaseClient } from "@/lib/supabase/database";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -39,14 +36,17 @@ function mapStatusToBadge(
   return "aguardando";
 }
 
+type OrderWithItems = DatabaseOrder & { order_items: DatabaseOrderItem[] };
+type VendedorProfile = { id: string; nome: string };
+
 export default function PedidoDetalhePage() {
   const params = useParams();
   const router = useRouter();
   const { user } = useAuth();
   const { toast } = useToast();
-  const [pedido, setPedido] = useState<any>(null);
-  const [cliente, setCliente] = useState<any>(null);
-  const [vendedor, setVendedor] = useState<any>(null);
+  const [pedido, setPedido] = useState<OrderWithItems | null>(null);
+  const [cliente, setCliente] = useState<DatabaseClient | null>(null);
+  const [vendedor, setVendedor] = useState<VendedorProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const supabase = createClient();
 
@@ -157,11 +157,11 @@ export default function PedidoDetalhePage() {
         title: "Sucesso",
         description: "PDF do pedido gerado com sucesso!",
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("[PDF] Erro ao gerar PDF do pedido:", error);
       toast({
         title: "Erro",
-        description: error.message || "Não foi possível gerar o PDF do pedido",
+        description: error instanceof Error ? error.message : "Não foi possível gerar o PDF do pedido",
         variant: "destructive",
       });
     }
@@ -300,7 +300,7 @@ export default function PedidoDetalhePage() {
               <div>
                 <p className="text-sm text-muted-foreground">Produtos</p>
                 <div className="space-y-1">
-                  {pedido.order_items?.map((item: any) => (
+                  {pedido.order_items?.map((item) => (
                     <p key={item.id} className="text-xs font-medium truncate">
                       {item.produto_nome} x{item.quantidade}
                     </p>
@@ -317,7 +317,7 @@ export default function PedidoDetalhePage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {pedido.order_items?.map((item: any, index: number) => {
+              {pedido.order_items?.map((item, index) => {
                 // preco_unitario é o preço de venda negociado (antes do desconto)
                 const precoVenda = item.preco_unitario;
                 const valorDescontoPorItem =
@@ -366,12 +366,12 @@ export default function PedidoDetalhePage() {
                 // Calcular totais gerais
                 // preco_unitario é o preço de venda negociado (antes do desconto)
                 const subtotalGeral =
-                  pedido.order_items?.reduce((sum: number, item: any) => {
+                  pedido.order_items?.reduce((sum, item) => {
                     return sum + item.preco_unitario * item.quantidade;
                   }, 0) || 0;
 
                 const totalDescontos =
-                  pedido.order_items?.reduce((sum: number, item: any) => {
+                  pedido.order_items?.reduce((sum, item) => {
                     const valorDesconto =
                       ((item.preco_unitario * item.desconto_percentual) / 100) *
                       item.quantidade;
@@ -379,7 +379,7 @@ export default function PedidoDetalhePage() {
                   }, 0) || 0;
 
                 const totalRetainedRevenue =
-                  pedido.order_items?.reduce((sum: number, item: any) => {
+                  pedido.order_items?.reduce((sum, item) => {
                     return sum + (item.retained_revenue_carcass || 0);
                   }, 0) || 0;
 
@@ -439,13 +439,13 @@ export default function PedidoDetalhePage() {
                   {(() => {
                     const totalCarcacas =
                       pedido.order_items?.reduce(
-                        (sum: number, item: any) =>
+                        (sum, item) =>
                           sum + (item.quantidade || 0),
                         0
                       ) || 0;
                     const carcacasPendentes =
                       pedido.order_items?.reduce(
-                        (sum: number, item: any) =>
+                        (sum, item) =>
                           sum + (item.debito_carcaca || 0),
                         0
                       ) || 0;
@@ -489,7 +489,7 @@ export default function PedidoDetalhePage() {
                     Detalhamento por Item
                   </h4>
                   <div className="space-y-2">
-                    {pedido.order_items?.map((item: any) => {
+                    {pedido.order_items?.map((item) => {
                       const carcacasPendentesItem = item.debito_carcaca || 0;
                       const carcacasDevolvidasItem =
                         item.quantidade - carcacasPendentesItem;

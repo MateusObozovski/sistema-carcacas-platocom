@@ -130,7 +130,7 @@ export default function ClientesPage() {
           setVendedores(vendedoresData || []);
         } else if (user.role === "Vendedor") {
           // Vendedor só pode ver a si mesmo
-          setVendedores([{ id: user.id, nome: user.nome || user.email }]);
+          setVendedores([{ id: user.id, nome: user.name || user.email }]);
         }
       } catch (error) {
         console.error("[v0] Error:", error);

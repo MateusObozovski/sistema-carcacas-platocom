@@ -1,5 +1,7 @@
 import { createClient } from "@supabase/supabase-js"
+import { createServerClient } from "@supabase/ssr"
 import { NextResponse } from "next/server"
+import { cookies } from "next/headers"
 import { createProfileSchema, validateAndSanitize } from "@/lib/validation"
 import { rateLimitByIP, rateLimitConfigs } from "@/lib/rate-limit"
 
@@ -45,9 +47,10 @@ export async function POST(request: Request) {
     let validatedData
     try {
       validatedData = validateAndSanitize(createProfileSchema, body)
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const err = error as { errors?: unknown; message?: string }
       return NextResponse.json(
-        { error: "Dados inválidos", details: error.errors || error.message },
+        { error: "Dados inválidos", details: err.errors || err.message },
         { status: 400 },
       )
     }
@@ -56,56 +59,117 @@ export async function POST(request: Request) {
 
     // Verificar se SUPABASE_SERVICE_ROLE_KEY está configurado
     if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-      console.error("[v0] SUPABASE_SERVICE_ROLE_KEY não configurado")
+      console.error("[create-profile] SUPABASE_SERVICE_ROLE_KEY não configurado")
       return NextResponse.json({ error: "Erro de configuração do servidor" }, { status: 500 })
     }
 
-    // Use service role to bypass RLS
-    const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
+    // Verificar autenticação - o usuário deve estar logado
+    const cookieStore = await cookies()
+    const supabaseAuth = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() {
+            return cookieStore.getAll()
+          },
+          setAll() {
+            // No-op em API routes
+          },
+        },
       },
-    })
+    )
+
+    const {
+      data: { user: authenticatedUser },
+    } = await supabaseAuth.auth.getUser()
+
+    // Use service role to bypass RLS
+    const supabaseAdmin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+        },
+      },
+    )
+
+    // SEGURANÇA: Validar que o userId corresponde ao usuário autenticado
+    // ou que o userId existe no Supabase Auth (para casos de auto-criação pós-signup)
+    if (authenticatedUser) {
+      // Se o usuário está autenticado, só pode criar perfil para si mesmo
+      if (authenticatedUser.id !== userId) {
+        return NextResponse.json(
+          { error: "Não autorizado: userId não corresponde ao usuário autenticado" },
+          { status: 403 },
+        )
+      }
+    } else {
+      // Se não há sessão, verificar se o userId existe no Supabase Auth
+      const { data: authUser, error: authError } = await supabaseAdmin.auth.admin.getUserById(userId)
+
+      if (authError || !authUser?.user) {
+        return NextResponse.json(
+          { error: "Não autorizado: usuário não encontrado" },
+          { status: 403 },
+        )
+      }
+
+      // Verificar se o email corresponde
+      if (authUser.user.email?.toLowerCase() !== email.toLowerCase()) {
+        return NextResponse.json(
+          { error: "Não autorizado: email não corresponde" },
+          { status: 403 },
+        )
+      }
+    }
 
     // Check if profile already exists
-    const { data: existing } = await supabase.from("profiles").select("id").eq("id", userId).maybeSingle()
+    const { data: existing } = await supabaseAdmin.from("profiles").select("id, email, nome, role").eq("id", userId).maybeSingle()
 
     if (existing) {
-      console.log("[v0] Profile already exists")
       return NextResponse.json({ success: true, profile: existing })
     }
 
+    // SEGURANÇA: Forçar role padrão para novos perfis criados via API
+    // Apenas admins podem definir roles diferentes (via /api/create-user)
+    const safeRole = "Vendedor"
+
     // Create the profile
-    const { data: profile, error } = await supabase
+    const { data: profile, error } = await supabaseAdmin
       .from("profiles")
       .insert([
         {
           id: userId,
           email,
           nome: name,
-          role: role || "Vendedor",
+          role: safeRole,
         },
       ])
       .select()
       .single()
 
     if (error) {
-      console.error("[v0] Error creating profile:", error)
-      // Não expor detalhes internos do erro
+      console.error("[create-profile] Error creating profile:", error)
       return NextResponse.json({ error: "Erro ao criar perfil" }, { status: 500 })
     }
 
-    console.log("[v0] Profile created successfully:", profile?.id)
+    // Log apenas em desenvolvimento
+    if (process.env.NODE_ENV === "development") {
+      console.log("[create-profile] Profile created:", profile?.id)
+    }
+
     return NextResponse.json(
-      { 
-        success: true, 
-        profile: { 
-          id: profile?.id, 
-          email: profile?.email, 
+      {
+        success: true,
+        profile: {
+          id: profile?.id,
+          email: profile?.email,
           nome: profile?.nome,
-          role: profile?.role 
-        } 
+          role: profile?.role
+        }
       },
       {
         headers: {
@@ -114,9 +178,8 @@ export async function POST(request: Request) {
         },
       },
     )
-  } catch (error: any) {
-    console.error("[v0] API error:", error)
-    // Não expor detalhes internos
+  } catch (error) {
+    console.error("[create-profile] API error:", error)
     return NextResponse.json({ error: "Erro interno do servidor" }, { status: 500 })
   }
 }

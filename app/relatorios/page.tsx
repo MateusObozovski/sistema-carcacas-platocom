@@ -45,6 +45,11 @@ import {
 import { StatusBadge } from "@/components/status-badge";
 import { isAuthError } from "@/lib/utils";
 import { useRouter } from "next/navigation";
+import type { DatabaseOrder, DatabaseOrderItem, DatabaseClient, DatabaseVendedor } from "@/lib/supabase/database";
+
+// Tipos para os dados com relacionamentos
+type OrderWithItems = DatabaseOrder & { order_items: DatabaseOrderItem[] };
+type PeriodoFiltro = "7dias" | "30dias" | "90dias" | "todos";
 
 // Helper function to map database status to StatusBadge status
 function mapStatusToBadge(
@@ -61,13 +66,11 @@ export default function RelatoriosPage() {
   const { user } = useAuth();
   const { toast } = useToast();
   const router = useRouter();
-  const [orders, setOrders] = useState<any[]>([]);
-  const [clients, setClients] = useState<any[]>([]);
-  const [vendedores, setVendedores] = useState<any[]>([]);
+  const [orders, setOrders] = useState<OrderWithItems[]>([]);
+  const [clients, setClients] = useState<DatabaseClient[]>([]);
+  const [vendedores, setVendedores] = useState<DatabaseVendedor[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [periodoFiltro, setPeriodoFiltro] = useState<
-    "7dias" | "30dias" | "90dias" | "todos"
-  >("30dias");
+  const [periodoFiltro, setPeriodoFiltro] = useState<PeriodoFiltro>("30dias");
   const [vendedorFiltro, setVendedorFiltro] = useState<string>("todos");
   const [dataInicio, setDataInicio] = useState<string>("");
   const [dataFim, setDataFim] = useState<string>("");
@@ -110,7 +113,7 @@ export default function RelatoriosPage() {
         if (user.role === "Vendedor") {
           setVendedorFiltro(user.id);
         }
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error("[v0] Error loading relatorios data:", error);
 
         // Verificar se é erro de autenticação
@@ -212,18 +215,18 @@ export default function RelatoriosPage() {
   });
 
   // Função auxiliar para calcular débito pendente de um pedido baseado nos order_items
-  const calcularDebitoPendente = (pedido: any): number => {
+  const calcularDebitoPendente = (pedido: OrderWithItems): number => {
     if (!pedido.order_items || !Array.isArray(pedido.order_items)) return 0;
     return pedido.order_items
       .filter(
-        (item: any) =>
+        (item) =>
           item.debito_carcaca > 0 && item.tipo_venda === "Base de Troca"
       )
-      .reduce((acc: number, item: any) => acc + (item.debito_carcaca || 0), 0);
+      .reduce((acc, item) => acc + (item.debito_carcaca || 0), 0);
   };
 
   // Função auxiliar para verificar se um pedido tem carcaças pendentes
-  const temCarcacasPendentes = (pedido: any): boolean => {
+  const temCarcacasPendentes = (pedido: OrderWithItems): boolean => {
     return calcularDebitoPendente(pedido) > 0;
   };
 
@@ -272,7 +275,7 @@ export default function RelatoriosPage() {
       (acc, p) =>
         acc +
         (p.order_items?.filter(
-          (item: any) =>
+          (item) =>
             item.debito_carcaca > 0 && item.tipo_venda === "Base de Troca"
         ).length || 0),
       0
@@ -306,7 +309,7 @@ export default function RelatoriosPage() {
       (acc, p) =>
         acc +
         (p.order_items?.filter(
-          (item: any) =>
+          (item) =>
             item.debito_carcaca > 0 && item.tipo_venda === "Base de Troca"
         ).length || 0),
       0
@@ -374,11 +377,11 @@ export default function RelatoriosPage() {
           });
           break;
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("[PDF] Erro ao gerar relatório:", error);
       toast({
         title: "Erro",
-        description: error.message || "Não foi possível gerar o relatório PDF",
+        description: error instanceof Error ? error.message : "Não foi possível gerar o relatório PDF",
         variant: "destructive",
       });
     }
@@ -419,7 +422,7 @@ export default function RelatoriosPage() {
                 <Label>Período</Label>
                 <Select
                   value={periodoFiltro}
-                  onValueChange={(v) => setPeriodoFiltro(v as any)}
+                  onValueChange={(v) => setPeriodoFiltro(v as PeriodoFiltro)}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -546,7 +549,7 @@ export default function RelatoriosPage() {
                   (acc, p) =>
                     acc +
                     (p.order_items?.filter(
-                      (item: any) =>
+                      (item) =>
                         item.debito_carcaca > 0 &&
                         item.tipo_venda === "Base de Troca"
                     ).length || 0),
@@ -885,7 +888,13 @@ export default function RelatoriosPage() {
                     ) : (
                       (() => {
                         // Expandir pedidos em itens pendentes individuais
-                        const itensPendentes: any[] = [];
+                        interface ItemPendente {
+                          pedido: OrderWithItems;
+                          item: DatabaseOrderItem;
+                          cliente: DatabaseClient | undefined;
+                          vendedor: DatabaseVendedor | undefined;
+                        }
+                        const itensPendentes: ItemPendente[] = [];
                         carcacasPendentes
                           .sort(
                             (a, b) =>
@@ -904,12 +913,12 @@ export default function RelatoriosPage() {
                             const itensComDebito = (
                               pedido.order_items || []
                             ).filter(
-                              (item: any) =>
+                              (item) =>
                                 item.debito_carcaca > 0 &&
                                 item.tipo_venda === "Base de Troca"
                             );
 
-                            itensComDebito.forEach((item: any) => {
+                            itensComDebito.forEach((item) => {
                               itensPendentes.push({
                                 pedido,
                                 item,
