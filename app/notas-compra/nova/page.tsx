@@ -284,7 +284,7 @@ export default function NovaNotaCompraPage() {
         data_nota: new Date(dataNota).toISOString(),
         data_vencimento: new Date(dataVencimento).toISOString(),
         valor_total: totalFinal,
-        status: "Pendente",
+        status: "Pendente" as const,
         observacoes: observacoes.trim() || undefined,
         created_by: user!.id,
       };
