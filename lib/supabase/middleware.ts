@@ -2,8 +2,15 @@ import { createServerClient } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
 
 export async function updateSession(request: NextRequest) {
+  // Create a nonce for CSP
+  const nonce = btoa(crypto.randomUUID())
+  const requestHeaders = new Headers(request.headers)
+  requestHeaders.set('x-nonce', nonce)
+
   let supabaseResponse = NextResponse.next({
-    request,
+    request: {
+      headers: requestHeaders,
+    },
   })
 
   // With Fluid compute, don't put this client in a global environment
@@ -19,7 +26,9 @@ export async function updateSession(request: NextRequest) {
         setAll(cookiesToSet) {
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
           supabaseResponse = NextResponse.next({
-            request,
+            request: {
+              headers: requestHeaders,
+            },
           })
           // Configurar cookies com flags de segurança
           cookiesToSet.forEach(({ name, value, options }) => {
@@ -91,30 +100,32 @@ export async function updateSession(request: NextRequest) {
     supabaseResponse.headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
   }
 
-  // Content Security Policy - mais restritivo em produção
+  // Content Security Policy
   const cspDirectives = [
     "default-src 'self'",
-    // Em produção: remove unsafe-eval, usa strict-dynamic
-    // Em dev: mantém unsafe-eval para Hot Module Replacement
+    // Script src com nonce e strict-dynamic para produção
     isProduction
-      ? "script-src 'self' 'strict-dynamic' https://vercel.live https://va.vercel-scripts.com"
+      ? `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' https://vercel.live https://va.vercel-scripts.com`
       : "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://vercel.live https://va.vercel-scripts.com",
     // Estilos: unsafe-inline necessário para CSS-in-JS/Tailwind
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: https: blob:",
     "font-src 'self' data:",
-    "object-src 'none'", // Mais restritivo - bloqueia plugins
+    "object-src 'none'",
     "connect-src 'self' https://*.supabase.co https://*.supabase.in https://vercel.live https://va.vercel-scripts.com wss://*.supabase.co",
     "frame-ancestors 'none'",
     "base-uri 'self'",
     "form-action 'self'",
-    "upgrade-insecure-requests", // Força HTTPS em recursos
+    "upgrade-insecure-requests",
   ]
 
-  // Em produção, usar Content-Security-Policy
-  // Em desenvolvimento, usar report-only para não quebrar HMR
   const cspHeader = isProduction ? "Content-Security-Policy" : "Content-Security-Policy-Report-Only"
-  supabaseResponse.headers.set(cspHeader, cspDirectives.join("; "))
+  const cspString = cspDirectives.join("; ")
+  
+  supabaseResponse.headers.set(cspHeader, cspString)
+  
+  // Também definimos o header CSP na requisição para que o Next.js possa usá-lo se necessário
+  requestHeaders.set(cspHeader, cspString)
 
   // Headers de cache para rotas autenticadas
   if (user && !isPublicPath) {
