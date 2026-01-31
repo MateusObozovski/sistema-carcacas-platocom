@@ -1,33 +1,8 @@
 "use client";
 
-import type React from "react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { ProtectedRoute } from "@/components/protected-route";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { useAuth } from "@/lib/auth-context";
 import {
   getSuppliers,
@@ -37,59 +12,109 @@ import {
   type DatabaseProduct,
 } from "@/lib/supabase/database";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Plus, Trash2, Save } from "lucide-react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { ProductSelectorModal } from "@/components/product-selector-modal";
+import { Plus, Trash2, Search, X } from "lucide-react";
+import { cn } from "@/lib/utils";
+import {
+  formatCurrencyInput,
+  parseCurrencyInput,
+  maskCurrencyInput,
+} from "@/lib/masks";
 
 interface ItemNota {
   id: string;
-  produto_id?: string;
-  descricao: string;
+  produtoId?: string;
+  produtoNome: string;
+  produtoCodigo?: string;
+  produtoCodigoFabricante?: string;
   quantidade: number;
-  valor_unitario: number;
-  valor_total: number;
+  valorUnitario: number;
+  subtotal: number;
 }
 
 export default function NovaNotaCompraPage() {
   const { user } = useAuth();
-  const { toast } = useToast();
   const router = useRouter();
-  const [fornecedores, setFornecedores] = useState<DatabaseSupplier[]>([]);
-  const [produtos, setProdutos] = useState<DatabaseProduct[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { toast } = useToast();
+
+  const [fornecedorId, setFornecedorId] = useState("");
+  const [fornecedorSearch, setFornecedorSearch] = useState("");
+  const [showFornecedorDropdown, setShowFornecedorDropdown] = useState(false);
+  const fornecedorInputRef = useRef<HTMLInputElement>(null);
+  const fornecedorDropdownRef = useRef<HTMLDivElement>(null);
+
+  const [numeroNota, setNumeroNota] = useState("");
+  const [dataNota, setDataNota] = useState(
+    new Date().toISOString().split("T")[0]
+  );
+  const [dataVencimento, setDataVencimento] = useState("");
+  const [observacoes, setObservacoes] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isProductModalOpen, setIsProductModalOpen] = useState(false);
+  const [highlightedItemId, setHighlightedItemId] = useState<string | null>(
+    null
+  );
 
-  const [formData, setFormData] = useState({
-    supplier_id: "",
-    numero_nota: "",
-    data_nota: new Date().toISOString().split("T")[0],
-    data_vencimento: "",
-    observacoes: "",
-  });
+  // Estado para valores formatados dos preços
+  const [valorUnitarioFormatado, setValorUnitarioFormatado] = useState<
+    Record<string, string>
+  >({});
 
-  const [itens, setItens] = useState<ItemNota[]>([]);
-  const [novoItem, setNovoItem] = useState<ItemNota>({
-    id: "",
-    produto_id: "",
-    descricao: "",
-    quantidade: 1,
-    valor_unitario: 0,
-    valor_total: 0,
-  });
+  const [produtos, setProdutos] = useState<DatabaseProduct[]>([]);
+  const [fornecedores, setFornecedores] = useState<DatabaseSupplier[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const [items, setItems] = useState<ItemNota[]>([]);
+
+  // Autocomplete de Fornecedores
+  const fornecedoresFiltrados = useMemo(() => {
+    if (!fornecedorSearch.trim()) return fornecedores;
+    const searchLower = fornecedorSearch.toLowerCase();
+    return fornecedores.filter((fornecedor) =>
+      fornecedor.nome.toLowerCase().includes(searchLower)
+    );
+  }, [fornecedores, fornecedorSearch]);
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [fornecedoresData, produtosData] = await Promise.all([
-          getSuppliers(),
-          getProducts(),
-        ]);
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        fornecedorInputRef.current &&
+        fornecedorDropdownRef.current &&
+        !fornecedorInputRef.current.contains(event.target as Node) &&
+        !fornecedorDropdownRef.current.contains(event.target as Node)
+      ) {
+        setShowFornecedorDropdown(false);
+      }
+    };
 
-        setFornecedores(fornecedoresData);
-        setProdutos(produtosData);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        setIsLoading(true);
+        const [productsData, suppliersData] = await Promise.all([
+          getProducts(),
+          getSuppliers(),
+        ]);
+        setProdutos(productsData);
+        setFornecedores(suppliersData);
       } catch (error) {
-        console.error("[v0] Error fetching data:", error);
+        console.error("[v0] Error loading data:", error);
         toast({
           title: "Erro",
           description: "Não foi possível carregar os dados",
@@ -100,180 +125,193 @@ export default function NovaNotaCompraPage() {
       }
     };
 
-    fetchData();
+    loadData();
   }, [toast]);
 
-  const handleProdutoChange = (produtoId: string) => {
-    const produto = produtos.find((p) => p.id === produtoId);
-    if (produto) {
-      setNovoItem({
-        ...novoItem,
-        produto_id: produtoId,
-        descricao: produto.nome,
-        valor_unitario: produto.preco_base,
-        valor_total: produto.preco_base * novoItem.quantidade,
-      });
-    } else {
-      setNovoItem({
-        ...novoItem,
-        produto_id: "",
-      });
-    }
-  };
+  // Cálculo do total
+  const totalFinal = useMemo(
+    () => items.reduce((sum, item) => sum + item.subtotal, 0),
+    [items]
+  );
 
-  const handleQuantidadeChange = (quantidade: number) => {
-    setNovoItem({
-      ...novoItem,
-      quantidade,
-      valor_total: novoItem.valor_unitario * quantidade,
-    });
-  };
-
-  const handleValorUnitarioChange = (valor: number) => {
-    setNovoItem({
-      ...novoItem,
-      valor_unitario: valor,
-      valor_total: valor * novoItem.quantidade,
-    });
-  };
-
-  const handleAdicionarItem = () => {
-    if (!novoItem.descricao.trim()) {
+  const handleSelectProduct = (produto: DatabaseProduct) => {
+    // Verificar duplicidade
+    const existingItem = items.find((item) => item.produtoId === produto.id);
+    if (existingItem) {
       toast({
-        title: "Erro",
-        description: "Preencha a descrição do item",
+        title: "Produto já adicionado",
+        description: `${produto.nome} já está na lista de itens`,
         variant: "destructive",
       });
+
+      // Highlight da linha existente
+      setHighlightedItemId(existingItem.id);
+      setTimeout(() => setHighlightedItemId(null), 2000);
       return;
     }
 
-    if (novoItem.quantidade <= 0) {
-      toast({
-        title: "Erro",
-        description: "Quantidade deve ser maior que zero",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (novoItem.valor_unitario <= 0) {
-      toast({
-        title: "Erro",
-        description: "Valor unitário deve ser maior que zero",
-        variant: "destructive",
-      });
-      return;
-    }
+    const valorUnitario = produto.preco_base;
+    const quantidade = 1;
+    const subtotal = valorUnitario * quantidade;
 
     const newItem: ItemNota = {
-      ...novoItem,
-      id: Date.now().toString(),
-      valor_total: novoItem.valor_unitario * novoItem.quantidade,
+      id: `item-${Date.now()}`,
+      produtoId: produto.id,
+      produtoNome: produto.nome,
+      produtoCodigo: produto.codigo,
+      produtoCodigoFabricante: produto.codigo_fabricante,
+      quantidade,
+      valorUnitario,
+      subtotal,
     };
 
-    setItens([...itens, newItem]);
-    setNovoItem({
-      id: "",
-      produto_id: "",
-      descricao: "",
-      quantidade: 1,
-      valor_unitario: 0,
-      valor_total: 0,
+    setItems([...items, newItem]);
+
+    // Inicializar o valor formatado
+    setValorUnitarioFormatado((prev) => ({
+      ...prev,
+      [newItem.id]: formatCurrencyInput(valorUnitario),
+    }));
+
+    toast({
+      title: "Item adicionado",
+      description: `${produto.nome} adicionado à nota`,
     });
   };
 
-  const handleRemoverItem = (id: string) => {
-    setItens(itens.filter((item) => item.id !== id));
+  const handleRemoveItem = (itemId: string) => {
+    setItems(items.filter((item) => item.id !== itemId));
+    // Remover também o valor formatado
+    setValorUnitarioFormatado((prev) => {
+      const newState = { ...prev };
+      delete newState[itemId];
+      return newState;
+    });
   };
 
-  const valorTotal = itens.reduce((sum, item) => sum + item.valor_total, 0);
+  const atualizarQuantidade = (itemId: string, novaQuantidade: number) => {
+    if (novaQuantidade < 1) return;
+    setItems(
+      items.map((item) => {
+        if (item.id === itemId) {
+          const subtotal = item.valorUnitario * novaQuantidade;
+          return {
+            ...item,
+            quantidade: novaQuantidade,
+            subtotal,
+          };
+        }
+        return item;
+      })
+    );
+  };
+
+  const atualizarValorUnitario = (itemId: string, valorFormatado: string) => {
+    const item = items.find((i) => i.id === itemId);
+    if (!item) return;
+
+    // Atualizar o valor formatado no estado
+    setValorUnitarioFormatado((prev) => ({
+      ...prev,
+      [itemId]: valorFormatado,
+    }));
+
+    // Converter o valor formatado para número
+    const novoValor = parseCurrencyInput(valorFormatado);
+
+    // Se o valor for inválido ou zero, apenas atualizar a formatação sem recalcular
+    if (isNaN(novoValor) || novoValor < 0) {
+      return;
+    }
+
+    // Recalcular subtotal
+    const subtotal = novoValor * item.quantidade;
+
+    setItems(
+      items.map((i) =>
+        i.id === itemId
+          ? {
+              ...i,
+              valorUnitario: novoValor,
+              subtotal,
+            }
+          : i
+      )
+    );
+  };
+
+  const handleSelectFornecedor = (fornecedorId: string) => {
+    setFornecedorId(fornecedorId);
+    const fornecedor = fornecedores.find((f) => f.id === fornecedorId);
+    if (fornecedor) {
+      setFornecedorSearch(fornecedor.nome);
+    }
+    setShowFornecedorDropdown(false);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
 
+    if (
+      !fornecedorId ||
+      !numeroNota.trim() ||
+      !dataNota ||
+      !dataVencimento ||
+      items.length === 0
+    ) {
+      toast({
+        title: "Erro",
+        description: !numeroNota.trim()
+          ? "Informe o número da nota"
+          : !dataNota
+          ? "Informe a data da nota"
+          : !dataVencimento
+          ? "Informe a data de vencimento"
+          : items.length === 0
+          ? "Adicione pelo menos um item"
+          : "Selecione um fornecedor",
+        variant: "destructive",
+      });
+      setIsSubmitting(false);
+      return;
+    }
+
     try {
-      if (!formData.supplier_id) {
-        toast({
-          title: "Erro",
-          description: "Selecione um fornecedor",
-          variant: "destructive",
-        });
-        setIsSubmitting(false);
-        return;
-      }
+      const invoiceData = {
+        supplier_id: fornecedorId,
+        numero_nota: numeroNota.trim(),
+        data_nota: new Date(dataNota).toISOString(),
+        data_vencimento: new Date(dataVencimento).toISOString(),
+        valor_total: totalFinal,
+        status: "Pendente",
+        observacoes: observacoes.trim() || undefined,
+        created_by: user!.id,
+      };
 
-      if (!formData.numero_nota.trim()) {
-        toast({
-          title: "Erro",
-          description: "Informe o número da nota",
-          variant: "destructive",
-        });
-        setIsSubmitting(false);
-        return;
-      }
+      const invoiceItems = items.map((item) => ({
+        produto_id: item.produtoId || undefined,
+        descricao: item.produtoNome,
+        quantidade: item.quantidade,
+        valor_unitario: item.valorUnitario,
+        valor_total: item.subtotal,
+      }));
 
-      if (!formData.data_nota) {
-        toast({
-          title: "Erro",
-          description: "Informe a data da nota",
-          variant: "destructive",
-        });
-        setIsSubmitting(false);
-        return;
-      }
-
-      if (!formData.data_vencimento) {
-        toast({
-          title: "Erro",
-          description: "Informe a data de vencimento",
-          variant: "destructive",
-        });
-        setIsSubmitting(false);
-        return;
-      }
-
-      if (itens.length === 0) {
-        toast({
-          title: "Erro",
-          description: "Adicione pelo menos um item à nota",
-          variant: "destructive",
-        });
-        setIsSubmitting(false);
-        return;
-      }
-
-      await createPurchaseInvoice(
-        {
-          supplier_id: formData.supplier_id,
-          numero_nota: formData.numero_nota.trim(),
-          data_nota: new Date(formData.data_nota).toISOString(),
-          data_vencimento: new Date(formData.data_vencimento).toISOString(),
-          valor_total: valorTotal,
-          status: "Pendente",
-          observacoes: formData.observacoes.trim() || undefined,
-          created_by: user!.id,
-        },
-        itens.map((item) => ({
-          produto_id: item.produto_id || undefined,
-          descricao: item.descricao,
-          quantidade: item.quantidade,
-          valor_unitario: item.valor_unitario,
-          valor_total: item.valor_total,
-        }))
-      );
+      await createPurchaseInvoice(invoiceData, invoiceItems);
 
       toast({
-        title: "Sucesso",
-        description: "Nota fiscal cadastrada com sucesso",
+        title: "Nota cadastrada!",
+        description: `Nota ${numeroNota} criada com sucesso`,
       });
 
-      router.push("/notas-compra");
+      setTimeout(() => {
+        router.push("/notas-compra");
+      }, 1000);
     } catch (error: any) {
       console.error("[v0] Error creating invoice:", error);
       toast({
         title: "Erro",
-        description: error?.message || "Não foi possível cadastrar a nota fiscal",
+        description: error?.message || "Não foi possível cadastrar a nota",
         variant: "destructive",
       });
     } finally {
@@ -288,295 +326,433 @@ export default function NovaNotaCompraPage() {
     }).format(value);
   };
 
-  if (isLoading) {
-    return (
-      <ProtectedRoute allowedRoles={["Coordenador", "Gerente", "admin"]}>
-        <div className="flex items-center justify-center h-64">
-          <div className="text-muted-foreground">Carregando...</div>
-        </div>
-      </ProtectedRoute>
-    );
-  }
-
   return (
     <ProtectedRoute allowedRoles={["Coordenador", "Gerente", "admin"]}>
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="sm" asChild type="button">
-              <Link href="/notas-compra">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Voltar
-              </Link>
-            </Button>
-            <div>
-              <h2 className="text-3xl font-bold tracking-tight">
-                Nova Nota de Compra
-              </h2>
-              <p className="text-muted-foreground">
-                Cadastre uma nova nota fiscal de entrada
-              </p>
+      <div className="flex flex-col min-h-[calc(100vh-4rem-2rem)] md:h-[calc(100vh-4rem-2rem)] bg-background md:overflow-hidden -m-4 md:-m-6 lg:-m-8">
+        <form
+          onSubmit={handleSubmit}
+          className="flex flex-col md:h-full md:overflow-hidden"
+        >
+          {/* 1. CABEÇALHO - Compacto e Horizontal */}
+          <div className="border-b bg-muted/30 px-4 md:px-6 py-4 md:py-5 shrink-0">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Fornecedor - Autocomplete */}
+              <div className="space-y-2 relative">
+                <Label htmlFor="fornecedor" className="text-base font-medium">
+                  Fornecedor *
+                </Label>
+                <div className="relative" ref={fornecedorInputRef}>
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="fornecedor"
+                    placeholder="Buscar fornecedor..."
+                    value={fornecedorSearch}
+                    onChange={(e) => {
+                      setFornecedorSearch(e.target.value);
+                      setShowFornecedorDropdown(true);
+                      if (!e.target.value) {
+                        setFornecedorId("");
+                      }
+                    }}
+                    onFocus={() => setShowFornecedorDropdown(true)}
+                    required
+                    className="pl-9 h-11 text-base"
+                  />
+                  {fornecedorId && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFornecedorId("");
+                        setFornecedorSearch("");
+                      }}
+                      className="absolute right-2 top-1/2 transform -translate-y-1/2"
+                    >
+                      <X className="h-4 w-4 text-muted-foreground hover:text-foreground" />
+                    </button>
+                  )}
+                </div>
+                {showFornecedorDropdown && fornecedoresFiltrados.length > 0 && (
+                  <div
+                    ref={fornecedorDropdownRef}
+                    className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-lg max-h-60 overflow-auto"
+                  >
+                    {fornecedoresFiltrados.map((fornecedor) => (
+                      <div
+                        key={fornecedor.id}
+                        onClick={() => handleSelectFornecedor(fornecedor.id)}
+                        className="px-4 py-3 hover:bg-accent cursor-pointer text-base"
+                      >
+                        {fornecedor.nome}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Número da Nota */}
+              <div className="space-y-2">
+                <Label htmlFor="numeroNota" className="text-base font-medium">
+                  Nº da Nota *
+                </Label>
+                <Input
+                  id="numeroNota"
+                  placeholder="Ex: 12345"
+                  value={numeroNota}
+                  onChange={(e) => setNumeroNota(e.target.value)}
+                  required
+                  className="h-11 text-base"
+                />
+              </div>
+
+              {/* Data da Nota */}
+              <div className="space-y-2">
+                <Label htmlFor="dataNota" className="text-base font-medium">
+                  Data da Nota *
+                </Label>
+                <Input
+                  id="dataNota"
+                  type="date"
+                  value={dataNota}
+                  onChange={(e) => setDataNota(e.target.value)}
+                  required
+                  className="h-11 text-base"
+                />
+              </div>
+
+              {/* Data de Vencimento */}
+              <div className="space-y-2">
+                <Label
+                  htmlFor="dataVencimento"
+                  className="text-base font-medium"
+                >
+                  Data Vencimento *
+                </Label>
+                <Input
+                  id="dataVencimento"
+                  type="date"
+                  value={dataVencimento}
+                  onChange={(e) => setDataVencimento(e.target.value)}
+                  required
+                  className="h-11 text-base"
+                />
+              </div>
             </div>
           </div>
-          <Button type="submit" disabled={isSubmitting}>
-            <Save className="h-4 w-4 mr-2" />
-            {isSubmitting ? "Salvando..." : "Salvar Nota"}
-          </Button>
-        </div>
 
-        {/* Dados da nota */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Dados da Nota</CardTitle>
-            <CardDescription>
-              Informações gerais da nota fiscal
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="supplier_id">Fornecedor *</Label>
-                <Select
-                  value={formData.supplier_id}
-                  onValueChange={(value) =>
-                    setFormData({ ...formData, supplier_id: value })
-                  }
-                  disabled={isSubmitting}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione um fornecedor" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {fornecedores.map((fornecedor) => (
-                      <SelectItem key={fornecedor.id} value={fornecedor.id}>
-                        {fornecedor.nome}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="numero_nota">Número da Nota *</Label>
-                <Input
-                  id="numero_nota"
-                  value={formData.numero_nota}
-                  onChange={(e) =>
-                    setFormData({ ...formData, numero_nota: e.target.value })
-                  }
-                  placeholder="Ex: 12345"
-                  disabled={isSubmitting}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="data_nota">Data da Nota *</Label>
-                <Input
-                  id="data_nota"
-                  type="date"
-                  value={formData.data_nota}
-                  onChange={(e) =>
-                    setFormData({ ...formData, data_nota: e.target.value })
-                  }
-                  disabled={isSubmitting}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="data_vencimento">Data de Vencimento *</Label>
-                <Input
-                  id="data_vencimento"
-                  type="date"
-                  value={formData.data_vencimento}
-                  onChange={(e) =>
-                    setFormData({ ...formData, data_vencimento: e.target.value })
-                  }
-                  disabled={isSubmitting}
-                />
-              </div>
-
-              <div className="space-y-2 md:col-span-2">
-                <Label htmlFor="observacoes">Observações</Label>
-                <Textarea
-                  id="observacoes"
-                  value={formData.observacoes}
-                  onChange={(e) =>
-                    setFormData({ ...formData, observacoes: e.target.value })
-                  }
-                  placeholder="Observações sobre a nota fiscal"
-                  disabled={isSubmitting}
-                  rows={2}
-                />
-              </div>
+          {/* 2. CORPO: Tabela de Itens */}
+          <div className="flex-1 flex flex-col md:min-h-0 md:overflow-hidden">
+            {/* Botão Adicionar Produto */}
+            <div className="px-4 md:px-6 py-4 border-b bg-background shrink-0">
+              <Button
+                type="button"
+                onClick={() => setIsProductModalOpen(true)}
+                className="w-full md:w-auto h-11 text-base"
+              >
+                <Plus className="mr-2 h-5 w-5" />
+                Adicionar Produto
+              </Button>
             </div>
-          </CardContent>
-        </Card>
 
-        {/* Adicionar itens */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Adicionar Item</CardTitle>
-            <CardDescription>
-              Adicione os itens da nota fiscal
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-4 md:grid-cols-5 items-end">
-              <div className="space-y-2 md:col-span-2">
-                <Label htmlFor="produto">Produto (opcional)</Label>
-                <Select
-                  value={novoItem.produto_id || "none"}
-                  onValueChange={(value) =>
-                    handleProdutoChange(value === "none" ? "" : value)
-                  }
-                  disabled={isSubmitting}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione um produto" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Nenhum (digitar manualmente)</SelectItem>
-                    {produtos.map((produto) => (
-                      <SelectItem key={produto.id} value={produto.id}>
-                        {produto.nome}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2 md:col-span-3">
-                <Label htmlFor="descricao">Descrição *</Label>
-                <Input
-                  id="descricao"
-                  value={novoItem.descricao}
-                  onChange={(e) =>
-                    setNovoItem({ ...novoItem, descricao: e.target.value })
-                  }
-                  placeholder="Descrição do item"
-                  disabled={isSubmitting}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="quantidade">Quantidade *</Label>
-                <Input
-                  id="quantidade"
-                  type="number"
-                  min="1"
-                  value={novoItem.quantidade}
-                  onChange={(e) =>
-                    handleQuantidadeChange(Number(e.target.value))
-                  }
-                  disabled={isSubmitting}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="valor_unitario">Valor Unitário *</Label>
-                <Input
-                  id="valor_unitario"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={novoItem.valor_unitario}
-                  onChange={(e) =>
-                    handleValorUnitarioChange(Number(e.target.value))
-                  }
-                  disabled={isSubmitting}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Valor Total</Label>
-                <div className="h-10 flex items-center font-medium">
-                  {formatCurrency(novoItem.valor_total)}
-                </div>
-              </div>
-
-              <div>
-                <Button
-                  type="button"
-                  onClick={handleAdicionarItem}
-                  disabled={isSubmitting}
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Adicionar
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Lista de itens */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Itens da Nota</CardTitle>
-            <CardDescription>
-              {itens.length} item(s) adicionado(s)
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {itens.length === 0 ? (
-              <div className="text-center text-muted-foreground py-8">
-                Nenhum item adicionado. Adicione itens usando o formulário acima.
-              </div>
-            ) : (
-              <>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Descrição</TableHead>
-                      <TableHead className="text-center">Quantidade</TableHead>
-                      <TableHead className="text-right">Valor Unit.</TableHead>
-                      <TableHead className="text-right">Valor Total</TableHead>
-                      <TableHead className="text-right">Ações</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {itens.map((item) => (
-                      <TableRow key={item.id}>
-                        <TableCell>{item.descricao}</TableCell>
-                        <TableCell className="text-center">
-                          {item.quantidade}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {formatCurrency(item.valor_unitario)}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {formatCurrency(item.valor_total)}
-                        </TableCell>
-                        <TableCell className="text-right">
+            {/* Tabela com scroll apenas nesta área (Desktop) / Fluxo normal (Mobile) */}
+            <div className="md:flex-1 md:overflow-y-auto px-4 md:px-6 md:min-h-0">
+              {items.length > 0 ? (
+                <>
+                  {/* Mobile View: Cards */}
+                  <div className="md:hidden space-y-4 pb-4">
+                    {items.map((item) => (
+                      <div
+                        key={item.id}
+                        className={cn(
+                          "bg-card rounded-lg border p-4 shadow-sm space-y-4",
+                          highlightedItemId === item.id &&
+                            "ring-2 ring-yellow-400 bg-yellow-50 dark:bg-yellow-900/10"
+                        )}
+                      >
+                        <div className="flex justify-between items-start gap-3">
+                          <div className="space-y-1">
+                            <span className="text-xs text-muted-foreground font-mono bg-muted px-1.5 py-0.5 rounded">
+                              {item.produtoCodigo || "-"}
+                            </span>
+                            <h4 className="font-medium text-base leading-tight">
+                              {item.produtoNome}
+                            </h4>
+                            <p className="text-xs text-muted-foreground">
+                              Fab: {item.produtoCodigoFabricante || "-"}
+                            </p>
+                          </div>
                           <Button
                             type="button"
                             variant="ghost"
-                            size="sm"
-                            onClick={() => handleRemoverItem(item.id)}
-                            disabled={isSubmitting}
+                            size="icon"
+                            onClick={() => handleRemoveItem(item.id)}
+                            className="h-8 w-8 text-destructive -mr-2 -mt-2"
                           >
-                            <Trash2 className="h-4 w-4 text-red-500" />
+                            <Trash2 className="h-4 w-4" />
                           </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                        </div>
 
-                <div className="mt-4 flex justify-end">
-                  <div className="bg-muted p-4 rounded-lg">
-                    <div className="text-sm text-muted-foreground">
-                      Valor Total da Nota
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1.5">
+                            <Label className="text-xs text-muted-foreground">
+                              Quantidade
+                            </Label>
+                            <Input
+                              type="number"
+                              min="1"
+                              value={item.quantidade}
+                              onChange={(e) =>
+                                atualizarQuantidade(
+                                  item.id,
+                                  Number(e.target.value) || 1
+                                )
+                              }
+                              className="h-10"
+                            />
+                          </div>
+
+                          <div className="space-y-1.5">
+                            <Label className="text-xs text-muted-foreground">
+                              Valor Unit.
+                            </Label>
+                            <Input
+                              type="text"
+                              value={
+                                valorUnitarioFormatado[item.id] !== undefined
+                                  ? valorUnitarioFormatado[item.id]
+                                  : formatCurrencyInput(item.valorUnitario)
+                              }
+                              onChange={(e) => {
+                                const valorFormatado = maskCurrencyInput(
+                                  e.target.value
+                                );
+                                atualizarValorUnitario(item.id, valorFormatado);
+                              }}
+                              onBlur={(e) => {
+                                const valor = parseCurrencyInput(e.target.value);
+                                if (valor >= 0) {
+                                  setValorUnitarioFormatado((prev) => ({
+                                    ...prev,
+                                    [item.id]: formatCurrencyInput(valor),
+                                  }));
+                                }
+                              }}
+                              className="h-10"
+                            />
+                          </div>
+
+                          <div className="space-y-1.5 col-span-2">
+                            <Label className="text-xs text-muted-foreground">
+                              Subtotal
+                            </Label>
+                            <div className="h-10 px-3 flex items-center bg-muted/50 rounded-md font-medium text-base">
+                              {formatCurrency(item.subtotal)}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+
+                    {/* Mobile Observations (Inside scroll area) */}
+                    <div className="pt-4 border-t">
+                      <Label
+                        htmlFor="observacoes-mobile"
+                        className="text-sm font-medium mb-2 block"
+                      >
+                        Observações
+                      </Label>
+                      <Textarea
+                        id="observacoes-mobile"
+                        placeholder="Informações adicionais..."
+                        value={observacoes}
+                        onChange={(e) => setObservacoes(e.target.value)}
+                        className="bg-background"
+                      />
                     </div>
-                    <div className="text-2xl font-bold">
-                      {formatCurrency(valorTotal)}
+                  </div>
+
+                  {/* Desktop View: Table */}
+                  <Table className="hidden md:table">
+                    <TableHeader className="sticky top-0 bg-background z-10 border-b">
+                      <TableRow>
+                        <TableHead className="w-[100px] text-base font-semibold">
+                          Código
+                        </TableHead>
+                        <TableHead className="w-[200px] text-base font-semibold">
+                          Descrição
+                        </TableHead>
+                        <TableHead className="w-[120px] text-base font-semibold">
+                          Cod. Fabricante
+                        </TableHead>
+                        <TableHead className="w-[80px] text-base font-semibold">
+                          Qtd
+                        </TableHead>
+                        <TableHead className="w-[120px] text-base font-semibold">
+                          Valor Unit.
+                        </TableHead>
+                        <TableHead className="w-[110px] text-base font-semibold">
+                          Subtotal
+                        </TableHead>
+                        <TableHead className="w-[60px] text-base font-semibold">
+                          Ações
+                        </TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {items.map((item) => (
+                        <TableRow
+                          key={item.id}
+                          className={cn(
+                            highlightedItemId === item.id &&
+                              "bg-yellow-100 dark:bg-yellow-900/20 animate-pulse"
+                          )}
+                        >
+                          <TableCell className="text-base">
+                            {item.produtoCodigo || "-"}
+                          </TableCell>
+                          <TableCell className="font-medium text-base">
+                            {item.produtoNome}
+                          </TableCell>
+                          <TableCell className="text-base">
+                            {item.produtoCodigoFabricante || "-"}
+                          </TableCell>
+                          <TableCell>
+                            <Input
+                              type="number"
+                              min="1"
+                              value={item.quantidade}
+                              onChange={(e) =>
+                                atualizarQuantidade(
+                                  item.id,
+                                  Number(e.target.value) || 1
+                                )
+                              }
+                              className="w-16 h-10 text-base"
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Input
+                              type="text"
+                              value={
+                                valorUnitarioFormatado[item.id] !== undefined
+                                  ? valorUnitarioFormatado[item.id]
+                                  : formatCurrencyInput(item.valorUnitario)
+                              }
+                              onChange={(e) => {
+                                const valorFormatado = maskCurrencyInput(
+                                  e.target.value
+                                );
+                                atualizarValorUnitario(item.id, valorFormatado);
+                              }}
+                              onBlur={(e) => {
+                                const valor = parseCurrencyInput(e.target.value);
+                                if (valor >= 0) {
+                                  setValorUnitarioFormatado((prev) => ({
+                                    ...prev,
+                                    [item.id]: formatCurrencyInput(valor),
+                                  }));
+                                }
+                              }}
+                              placeholder="0,00"
+                              className="w-28 h-10 text-base"
+                            />
+                          </TableCell>
+                          <TableCell className="font-medium text-base">
+                            {formatCurrency(item.subtotal)}
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleRemoveItem(item.id)}
+                              className="h-10 w-10 text-destructive hover:text-destructive"
+                            >
+                              <Trash2 className="h-5 w-5" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </>
+              ) : (
+                <div className="flex items-center justify-center h-full text-muted-foreground">
+                  <div className="text-center">
+                    <p className="text-lg mb-2">Nenhum item adicionado</p>
+                    <p className="text-base">
+                      Clique em "Adicionar Produto" para começar
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* 3. RODAPÉ - Fixo na parte inferior */}
+          <div className="border-t bg-muted/30 px-4 md:px-6 py-4 shrink-0 sticky bottom-0 md:static z-20">
+            <div className="flex flex-col md:flex-row gap-4 md:gap-6">
+              {/* Esquerda - Observações (Desktop Only) */}
+              <div className="hidden md:block md:w-[60%]">
+                <Label
+                  htmlFor="observacoes"
+                  className="text-base font-medium mb-2 block"
+                >
+                  Observações
+                </Label>
+                <Textarea
+                  id="observacoes"
+                  placeholder="Informações adicionais sobre a nota..."
+                  value={observacoes}
+                  onChange={(e) => setObservacoes(e.target.value)}
+                  rows={3}
+                  className="resize-none text-base"
+                />
+              </div>
+
+              {/* Direita - Totais e Botão */}
+              <div className="flex flex-col justify-between w-full md:w-[40%]">
+                <div className="space-y-2 md:space-y-3 text-right">
+                  <div className="border-t pt-2 md:pt-3 mt-1 md:mt-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-lg md:text-lg font-semibold">
+                        TOTAL DA NOTA:
+                      </span>
+                      <span className="text-xl md:text-2xl font-bold text-primary">
+                        {formatCurrency(totalFinal)}
+                      </span>
                     </div>
                   </div>
                 </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
-      </form>
+
+                <div className="flex justify-end mt-4">
+                  <Button
+                    type="submit"
+                    disabled={
+                      isSubmitting ||
+                      !fornecedorId ||
+                      items.length === 0 ||
+                      !numeroNota.trim() ||
+                      !dataNota ||
+                      !dataVencimento
+                    }
+                    className="w-full md:w-auto bg-orange-500 hover:bg-orange-600 text-white h-12 md:px-10 text-base font-semibold"
+                  >
+                    {isSubmitting ? "Processando..." : "Salvar Nota"}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </form>
+
+        {/* Modal de Seleção de Produtos */}
+        <ProductSelectorModal
+          open={isProductModalOpen}
+          onOpenChange={setIsProductModalOpen}
+          products={produtos}
+          onSelectProduct={handleSelectProduct}
+        />
+      </div>
     </ProtectedRoute>
   );
 }
