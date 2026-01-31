@@ -200,12 +200,26 @@ export async function POST(request: NextRequest) {
     if (createUserError) {
       console.error("[v0] Error creating client user:", createUserError)
       console.error("[v0] Error details:", JSON.stringify(createUserError, null, 2))
+      console.error("[v0] Error message:", createUserError.message)
+      console.error("[v0] Error code:", createUserError.code)
+      console.error("[v0] Error status:", createUserError.status)
+
       if (createUserError.message.includes("already registered") || createUserError.message.includes("already exists")) {
         return NextResponse.json({ error: "Este código de acesso já está em uso" }, { status: 409 })
       }
+
+      // Melhor mensagem de erro
+      let errorMessage = "Erro ao criar usuário";
+      if (createUserError.message.includes("password")) {
+        errorMessage = "Senha inválida. Use pelo menos 6 caracteres.";
+      } else if (createUserError.message.includes("email")) {
+        errorMessage = "Email inválido ou já em uso";
+      }
+
       return NextResponse.json({
-        error: "Erro ao criar usuário",
-        details: process.env.NODE_ENV === "development" ? createUserError.message : undefined
+        error: errorMessage,
+        details: createUserError.message, // Sempre mostrar details para debug
+        code: createUserError.code
       }, { status: 500 })
     }
 

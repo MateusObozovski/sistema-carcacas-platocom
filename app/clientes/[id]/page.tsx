@@ -153,8 +153,9 @@ export default function ClienteDetalhePage() {
       const result = await response.json();
 
       if (!response.ok) {
+        console.error("[v0] API error response:", result);
         const errorMessage = result.details
-          ? `${result.error}: ${result.details}`
+          ? `${result.error}\n\nDetalhes: ${result.details}`
           : result.error || "Erro ao criar acesso";
         throw new Error(errorMessage);
       }
