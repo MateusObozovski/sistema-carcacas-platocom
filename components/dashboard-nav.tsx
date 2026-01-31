@@ -39,22 +39,18 @@ export function DashboardNav({ isOpen, onClose }: DashboardNavProps) {
   }, [pathname]);
 
   const navItems = [
+    // 📊 Visão Geral
     {
       title: "Dashboard",
       href: "/dashboard",
       icon: LayoutDashboard,
       roles: ["admin", "Gerente", "Coordenador", "Vendedor"],
     },
+    // 💰 Módulo de Vendas
     {
-      title: "Vendedores",
-      href: "/vendedores",
-      icon: Users,
-      roles: ["admin", "Gerente", "Coordenador"],
-    },
-    {
-      title: "Clientes",
-      href: "/clientes",
-      icon: Building2,
+      title: "Nova Venda",
+      href: "/nova-venda",
+      icon: FileText,
       roles: ["admin", "Gerente", "Coordenador", "Vendedor"],
     },
     {
@@ -69,12 +65,7 @@ export function DashboardNav({ isOpen, onClose }: DashboardNavProps) {
       icon: Package,
       roles: ["admin", "Gerente", "Coordenador", "Vendedor"],
     },
-    {
-      title: "Nova Venda",
-      href: "/nova-venda",
-      icon: FileText,
-      roles: ["admin", "Gerente", "Coordenador", "Vendedor"],
-    },
+    // 📦 Módulo de Compras e Estoque
     {
       title: "Entrada de Mercadoria",
       href: "/entrada-mercadoria",
@@ -85,6 +76,19 @@ export function DashboardNav({ isOpen, onClose }: DashboardNavProps) {
       title: "Vincular Entrada",
       href: "/vincular-entrada",
       icon: ArrowRightLeft,
+      roles: ["admin", "Gerente", "Coordenador", "Vendedor"],
+    },
+    {
+      title: "Notas de Compra",
+      href: "/notas-compra",
+      icon: Receipt,
+      roles: ["admin", "Gerente", "Coordenador"],
+    },
+    // 📋 Cadastros
+    {
+      title: "Clientes",
+      href: "/clientes",
+      icon: Building2,
       roles: ["admin", "Gerente", "Coordenador", "Vendedor"],
     },
     {
@@ -100,11 +104,12 @@ export function DashboardNav({ isOpen, onClose }: DashboardNavProps) {
       roles: ["admin", "Gerente", "Coordenador"],
     },
     {
-      title: "Notas de Compra",
-      href: "/notas-compra",
-      icon: Receipt,
+      title: "Vendedores",
+      href: "/vendedores",
+      icon: Users,
       roles: ["admin", "Gerente", "Coordenador"],
     },
+    // 📊 Análise e Configurações
     {
       title: "Relatórios",
       href: "/relatorios",
