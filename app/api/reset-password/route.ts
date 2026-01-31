@@ -4,6 +4,16 @@ import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { rateLimitByIP, rateLimitConfigs } from "@/lib/rate-limit"
 import { cookies } from "next/headers"
+import { logger } from "@/lib/logger"
+import { withCSRFProtection } from "@/lib/csrf-protection"
+import {
+  errorResponse,
+  successResponse,
+  unauthorizedResponse,
+  forbiddenResponse,
+  rateLimitResponse,
+  validationErrorResponse,
+} from "@/lib/api-response"
 
 // Helper para obter IP do request
 function getIP(request: NextRequest): string {
@@ -25,7 +35,7 @@ const resetPasswordSchema = z.object({
     ),
 })
 
-export async function POST(request: NextRequest) {
+async function resetPasswordHandler(request: NextRequest) {
   try {
     // Verificar autenticação e permissões
     const cookieStore = await cookies()
@@ -50,7 +60,7 @@ export async function POST(request: NextRequest) {
     } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json({ error: "Não autenticado" }, { status: 401 })
+      return unauthorizedResponse()
     }
 
     // Verificar se o usuário tem role admin
@@ -61,7 +71,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (profileError || !currentUserProfile || currentUserProfile.role !== "admin") {
-      return NextResponse.json({ error: "Acesso negado. Apenas administradores podem resetar senhas." }, { status: 403 })
+      return forbiddenResponse("Acesso negado. Apenas administradores podem resetar senhas.")
     }
 
     // Rate limiting
@@ -70,22 +80,11 @@ export async function POST(request: NextRequest) {
       const ip = getIP(request)
       rateLimitResult = await rateLimitByIP(ip, rateLimitConfigs.sensitive || rateLimitConfigs.api)
     } catch (rateLimitError) {
-      console.warn("[v0] Rate limiting error (continuing):", rateLimitError)
+      logger.warn("[reset-password] Rate limiting error (continuing):", rateLimitError)
     }
 
     if (rateLimitResult && !rateLimitResult.success) {
-      return NextResponse.json(
-        {
-          error: "Muitas requisições. Tente novamente mais tarde.",
-          retryAfter: Math.ceil((rateLimitResult.reset - Date.now()) / 1000),
-        },
-        {
-          status: 429,
-          headers: {
-            "Retry-After": Math.ceil((rateLimitResult.reset - Date.now()) / 1000).toString(),
-          },
-        },
-      )
+      return rateLimitResponse(Math.ceil((rateLimitResult.reset - Date.now()) / 1000))
     }
 
     // Validar input
@@ -93,25 +92,22 @@ export async function POST(request: NextRequest) {
     try {
       body = await request.json()
     } catch {
-      return NextResponse.json({ error: "JSON inválido" }, { status: 400 })
+      return validationErrorResponse("JSON inválido")
     }
 
     let validatedData
     try {
       validatedData = resetPasswordSchema.parse(body)
-    } catch (error: any) {
-      return NextResponse.json(
-        { error: "Dados inválidos", details: error.errors || error.message },
-        { status: 400 },
-      )
+    } catch (error) {
+      return validationErrorResponse(error)
     }
 
     const { userId, newPassword } = validatedData
 
     // Verificar se SUPABASE_SERVICE_ROLE_KEY está configurado
     if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-      console.error("[v0] SUPABASE_SERVICE_ROLE_KEY não configurado")
-      return NextResponse.json({ error: "Erro de configuração do servidor" }, { status: 500 })
+      logger.error("[reset-password] SUPABASE_SERVICE_ROLE_KEY não configurado")
+      return errorResponse(new Error("Service role key not configured"), 500, "Erro de configuração do servidor")
     }
 
     // Criar cliente admin
@@ -127,24 +123,18 @@ export async function POST(request: NextRequest) {
     )
 
     // Resetar senha usando Admin API
-    console.log("[v0] Resetting password for user:", userId)
+    logger.log("[reset-password] Resetting password for user:", userId)
     const { data: updateData, error: updateError } = await supabaseAdmin.auth.admin.updateUserById(userId, {
       password: newPassword,
     })
 
     if (updateError) {
-      console.error("[v0] Error resetting password:", updateError)
-      return NextResponse.json(
-        {
-          error: "Erro ao resetar senha",
-          details: process.env.NODE_ENV === "development" ? updateError.message : undefined,
-        },
-        { status: 500 },
-      )
+      logger.error("[reset-password] Error resetting password", updateError)
+      return errorResponse(updateError, 500, "Erro ao resetar senha")
     }
 
     if (!updateData.user) {
-      return NextResponse.json({ error: "Usuário não encontrado" }, { status: 404 })
+      return errorResponse(new Error("User not found"), 404, "Usuário não encontrado")
     }
 
     const responseHeaders: Record<string, string> = {}
@@ -153,7 +143,7 @@ export async function POST(request: NextRequest) {
       responseHeaders["X-RateLimit-Remaining"] = rateLimitResult.remaining.toString()
     }
 
-    return NextResponse.json(
+    return successResponse(
       {
         success: true,
         message: "Senha resetada com sucesso",
@@ -162,20 +152,15 @@ export async function POST(request: NextRequest) {
           email: updateData.user.email,
         },
       },
-      {
-        headers: responseHeaders,
-      },
+      200,
+      responseHeaders
     )
-  } catch (error: any) {
-    console.error("[v0] API error:", error)
-    console.error("[v0] API error stack:", error.stack)
-    return NextResponse.json(
-      {
-        error: "Erro interno do servidor",
-        details: process.env.NODE_ENV === "development" ? error.message : undefined,
-      },
-      { status: 500 },
-    )
+  } catch (error) {
+    logger.error("[reset-password] API error", error)
+    return errorResponse(error)
   }
 }
+
+// Exportar com proteção CSRF
+export const POST = withCSRFProtection(resetPasswordHandler)
 

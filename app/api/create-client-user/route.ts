@@ -105,8 +105,24 @@ export async function POST(request: NextRequest) {
     const { clientId, codigoAcesso, senha } = validatedData
 
     if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      console.error("[v0] SUPABASE_SERVICE_ROLE_KEY não configurado")
+      console.error("[v0] NEXT_PUBLIC_SUPABASE_URL:", process.env.NEXT_PUBLIC_SUPABASE_URL ? "✓ configurado" : "✗ não configurado")
       return NextResponse.json(
-        { error: "Erro de configuração do servidor" },
+        {
+          error: "Erro de configuração do servidor: SUPABASE_SERVICE_ROLE_KEY não está configurado",
+          details: process.env.NODE_ENV === "development" ? "Missing SUPABASE_SERVICE_ROLE_KEY environment variable" : undefined
+        },
+        { status: 500 },
+      )
+    }
+
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
+      console.error("[v0] NEXT_PUBLIC_SUPABASE_URL não configurado")
+      return NextResponse.json(
+        {
+          error: "Erro de configuração do servidor: NEXT_PUBLIC_SUPABASE_URL não está configurado",
+          details: process.env.NODE_ENV === "development" ? "Missing NEXT_PUBLIC_SUPABASE_URL environment variable" : undefined
+        },
         { status: 500 },
       )
     }
@@ -147,16 +163,28 @@ export async function POST(request: NextRequest) {
     // Usar código de acesso como email (codigo@portal.platocom.com.br)
     const portalEmail = `${codigoAcesso.toLowerCase()}@portal.platocom.com.br`
 
-    // Verificar se o código de acesso já está em uso
-    const { data: existingUser } = await supabaseAdmin.auth.admin.listUsers()
-    const emailExists = existingUser?.users?.some(u => u.email === portalEmail)
-
-    if (emailExists) {
-      return NextResponse.json({ error: "Este código de acesso já está em uso" }, { status: 409 })
+    // Verificar se o código de acesso já está em uso (verificando email duplicado)
+    try {
+      const { data: usersData, error: listError } = await supabaseAdmin.auth.admin.listUsers()
+      if (listError) {
+        console.warn("[v0] Warning: Could not list users to check for duplicates:", listError)
+      } else {
+        const emailExists = usersData?.users?.some(u => u.email === portalEmail)
+        if (emailExists) {
+          return NextResponse.json({ error: "Este código de acesso já está em uso" }, { status: 409 })
+        }
+      }
+    } catch (listUsersError) {
+      console.warn("[v0] Warning: Could not list users to check for duplicates:", listUsersError)
+      // Continuar mesmo se não conseguir verificar duplicados
+      // A criação do usuário vai falhar de qualquer forma se for duplicado
     }
 
     // Criar usuário no Supabase Auth
     console.log("[v0] Creating client user with email:", portalEmail)
+    console.log("[v0] Client data:", { id: clientData.id, nome: clientData.nome })
+    console.log("[v0] User metadata:", { role: "Cliente", client_id: clientId, codigo_acesso: codigoAcesso })
+
     const { data: authData, error: createUserError } = await supabaseAdmin.auth.admin.createUser({
       email: portalEmail,
       password: senha,
@@ -171,27 +199,43 @@ export async function POST(request: NextRequest) {
 
     if (createUserError) {
       console.error("[v0] Error creating client user:", createUserError)
+      console.error("[v0] Error details:", JSON.stringify(createUserError, null, 2))
       if (createUserError.message.includes("already registered") || createUserError.message.includes("already exists")) {
         return NextResponse.json({ error: "Este código de acesso já está em uso" }, { status: 409 })
       }
-      return NextResponse.json({ error: "Erro ao criar usuário" }, { status: 500 })
+      return NextResponse.json({
+        error: "Erro ao criar usuário",
+        details: process.env.NODE_ENV === "development" ? createUserError.message : undefined
+      }, { status: 500 })
     }
 
     if (!authData.user) {
-      return NextResponse.json({ error: "Erro ao criar usuário" }, { status: 500 })
+      console.error("[v0] Auth user created but data is empty")
+      return NextResponse.json({
+        error: "Erro ao criar usuário: dados do usuário não retornados",
+        details: process.env.NODE_ENV === "development" ? "authData.user is null" : undefined
+      }, { status: 500 })
     }
+
+    console.log("[v0] User created successfully:", authData.user.id)
 
     // Aguardar trigger
     await new Promise((resolve) => setTimeout(resolve, 500))
 
     // Verificar/criar profile
-    const { data: profile } = await supabaseAdmin
+    console.log("[v0] Checking for profile:", authData.user.id)
+    const { data: profile, error: profileCheckError } = await supabaseAdmin
       .from("profiles")
       .select("*")
       .eq("id", authData.user.id)
       .maybeSingle()
 
+    if (profileCheckError) {
+      console.error("[v0] Error checking profile:", profileCheckError)
+    }
+
     if (!profile) {
+      console.log("[v0] Profile not found, creating manually...")
       const { error: createProfileError } = await supabaseAdmin
         .from("profiles")
         .insert({
@@ -203,10 +247,16 @@ export async function POST(request: NextRequest) {
 
       if (createProfileError) {
         console.error("[v0] Error creating profile:", createProfileError)
+        console.error("[v0] Profile creation error details:", JSON.stringify(createProfileError, null, 2))
+      } else {
+        console.log("[v0] Profile created successfully")
       }
+    } else {
+      console.log("[v0] Profile already exists:", profile.id)
     }
 
     // Criar vinculação client_users
+    console.log("[v0] Creating client_users link:", { user_id: authData.user.id, client_id: clientId })
     const { error: linkError } = await supabaseAdmin
       .from("client_users")
       .insert({
@@ -216,19 +266,33 @@ export async function POST(request: NextRequest) {
 
     if (linkError) {
       console.error("[v0] Error linking client user:", linkError)
+      console.error("[v0] Link error details:", JSON.stringify(linkError, null, 2))
       // Tentar deletar o usuário criado para manter consistência
       await supabaseAdmin.auth.admin.deleteUser(authData.user.id)
-      return NextResponse.json({ error: "Erro ao vincular usuário ao cliente" }, { status: 500 })
+      return NextResponse.json({
+        error: "Erro ao vincular usuário ao cliente",
+        details: process.env.NODE_ENV === "development" ? linkError.message : undefined
+      }, { status: 500 })
     }
 
+    console.log("[v0] Client user linked successfully")
+
     // Atualizar cliente com código de acesso
-    await supabaseAdmin
+    console.log("[v0] Updating client with portal access:", clientId)
+    const { error: updateClientError } = await supabaseAdmin
       .from("clients")
       .update({
         codigo_acesso: codigoAcesso,
         portal_habilitado: true
       })
       .eq("id", clientId)
+
+    if (updateClientError) {
+      console.error("[v0] Error updating client:", updateClientError)
+      console.error("[v0] Update client error details:", JSON.stringify(updateClientError, null, 2))
+    } else {
+      console.log("[v0] Client updated successfully")
+    }
 
     const responseHeaders: Record<string, string> = {}
     if (rateLimitResult) {

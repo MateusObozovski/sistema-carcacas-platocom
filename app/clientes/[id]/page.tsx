@@ -153,7 +153,10 @@ export default function ClienteDetalhePage() {
       const result = await response.json();
 
       if (!response.ok) {
-        throw new Error(result.error || "Erro ao criar acesso");
+        const errorMessage = result.details
+          ? `${result.error}: ${result.details}`
+          : result.error || "Erro ao criar acesso";
+        throw new Error(errorMessage);
       }
 
       toast({
