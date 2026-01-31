@@ -2,16 +2,7 @@ import { createServerClient } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
 
 export async function updateSession(request: NextRequest) {
-  // Create a nonce for CSP
-  const nonce = btoa(crypto.randomUUID())
-  const requestHeaders = new Headers(request.headers)
-  requestHeaders.set('x-nonce', nonce)
-
-  let supabaseResponse = NextResponse.next({
-    request: {
-      headers: requestHeaders,
-    },
-  })
+  let supabaseResponse = NextResponse.next()
 
   // With Fluid compute, don't put this client in a global environment
   // variable. Always create a new one on each request.
@@ -25,11 +16,7 @@ export async function updateSession(request: NextRequest) {
         },
         setAll(cookiesToSet) {
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-          supabaseResponse = NextResponse.next({
-            request: {
-              headers: requestHeaders,
-            },
-          })
+          supabaseResponse = NextResponse.next()
           // Configurar cookies com flags de segurança
           cookiesToSet.forEach(({ name, value, options }) => {
             const isProduction = process.env.NODE_ENV === "production"
@@ -103,10 +90,8 @@ export async function updateSession(request: NextRequest) {
   // Content Security Policy
   const cspDirectives = [
     "default-src 'self'",
-    // Script src com nonce e strict-dynamic para produção
-    isProduction
-      ? `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' https://vercel.live https://va.vercel-scripts.com`
-      : "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://vercel.live https://va.vercel-scripts.com",
+    // Script src - permitir scripts inline e do Vercel para compatibilidade
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://vercel.live https://va.vercel-scripts.com",
     // Estilos: unsafe-inline necessário para CSS-in-JS/Tailwind
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: https: blob:",
@@ -119,13 +104,9 @@ export async function updateSession(request: NextRequest) {
     "upgrade-insecure-requests",
   ]
 
-  const cspHeader = isProduction ? "Content-Security-Policy" : "Content-Security-Policy-Report-Only"
   const cspString = cspDirectives.join("; ")
-  
-  supabaseResponse.headers.set(cspHeader, cspString)
-  
-  // Também definimos o header CSP na requisição para que o Next.js possa usá-lo se necessário
-  requestHeaders.set(cspHeader, cspString)
+
+  supabaseResponse.headers.set("Content-Security-Policy", cspString)
 
   // Headers de cache para rotas autenticadas
   if (user && !isPublicPath) {
