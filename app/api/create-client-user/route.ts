@@ -281,11 +281,17 @@ export async function POST(request: NextRequest) {
     if (linkError) {
       console.error("[v0] Error linking client user:", linkError)
       console.error("[v0] Link error details:", JSON.stringify(linkError, null, 2))
+      console.error("[v0] Link error message:", linkError.message)
+      console.error("[v0] Link error code:", linkError.code)
+      console.error("[v0] Link error hint:", linkError.hint)
+
       // Tentar deletar o usuário criado para manter consistência
       await supabaseAdmin.auth.admin.deleteUser(authData.user.id)
       return NextResponse.json({
         error: "Erro ao vincular usuário ao cliente",
-        details: process.env.NODE_ENV === "development" ? linkError.message : undefined
+        details: linkError.message, // Sempre mostrar details para debug
+        code: linkError.code,
+        hint: linkError.hint
       }, { status: 500 })
     }
 
